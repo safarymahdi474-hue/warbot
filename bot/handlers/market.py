@@ -10,6 +10,8 @@ from bot.database.db import get_session
 from bot.utils.context import user_scope
 from bot.database.models import AuctionListing, ItemType, MarketListing, User
 from bot.utils.items import get_inventory
+from bot.utils.exchange import RESOURCE_LABELS as EXCHANGE_RESOURCE_LABELS
+from bot.utils.exchange import SELL_PRICES, buy_price, buy_resource, sell_resource
 from bot.utils.market import (
     RESOURCE_LABELS,
     buy_market_listing,
@@ -30,6 +32,10 @@ class SellListing(StatesGroup):
     waiting_for_price = State()
 
 
+class ExchangeAction(StatesGroup):
+    waiting_for_quantity = State()
+
+
 class AuctionCreation(StatesGroup):
     waiting_for_quantity = State()
     waiting_for_price = State()
@@ -46,8 +52,9 @@ class AuctionBid(StatesGroup):
 def market_menu_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[
-            [InlineKeyboardButton(text="🛒 مرور بازار", callback_data="browse_market")],
-            [InlineKeyboardButton(text="📤 فروش در بازار", callback_data="sell_market_start")],
+            [InlineKeyboardButton(text="💱 صرافی منابع (آنی)", callback_data="show_exchange")],
+            [InlineKeyboardButton(text="🛒 مرور بازار آیتم‌ها", callback_data="browse_market")],
+            [InlineKeyboardButton(text="📤 فروش آیتم در بازار", callback_data="sell_market_start")],
             [InlineKeyboardButton(text="🔨 مرور حراج‌ها", callback_data="browse_auctions")],
             [InlineKeyboardButton(text="🔼 ایجاد حراج", callback_data="create_auction_start")],
             [InlineKeyboardButton(text="📋 آگهی‌های من", callback_data="my_listings")],
@@ -64,6 +71,101 @@ async def cmd_market(message: Message) -> None:
 async def cb_market_menu(callback: CallbackQuery) -> None:
     await callback.message.edit_text("🏪 بازار و حراج:", reply_markup=market_menu_keyboard())
     await callback.answer()
+
+
+# ---------------------------------------------------------------------------
+# صرافی منابع - خرید/فروش آنی با ربات (بدون آگهی)
+# ---------------------------------------------------------------------------
+
+def exchange_keyboard() -> InlineKeyboardMarkup:
+    rows = []
+    for r in EXCHANGE_RESOURCE_LABELS:
+        rows.append(
+            [
+                InlineKeyboardButton(text=f"🔻 فروش {EXCHANGE_RESOURCE_LABELS[r]}", callback_data=f"exchange:sell:{r}"),
+                InlineKeyboardButton(text=f"🔺 خرید {EXCHANGE_RESOURCE_LABELS[r]}", callback_data=f"exchange:buy:{r}"),
+            ]
+        )
+    rows.append([InlineKeyboardButton(text="🔙 بازگشت", callback_data="show_market_menu")])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def build_exchange_text(user: User) -> str:
+    lines = ["💱 <b>صرافی منابع</b>\nخرید/فروش آنی با ربات، بدون نیاز به آگهی یا منتظر خریدار موندن.\n"]
+    for r, label in EXCHANGE_RESOURCE_LABELS.items():
+        owned = getattr(user, r)
+        lines.append(
+            f"{label}: موجودی تو {owned} | فروش به ربات: 💰{SELL_PRICES[r]}/واحد | "
+            f"خرید از ربات: 💰{buy_price(r)}/واحد"
+        )
+    lines.append(f"\n💰 طلای تو: {user.gold}")
+    return "\n".join(lines)
+
+
+async def _exchange_view(telegram_id: int):
+    async with get_session() as session:
+        result = await session.execute(select(User).where(*user_scope(telegram_id)))
+        user = result.scalar_one_or_none()
+        if user is None:
+            return "هنوز ثبت‌نام نکردی! دستور /start رو بزن.", None
+        return build_exchange_text(user), exchange_keyboard()
+
+
+@router.callback_query(F.data == "show_exchange")
+async def cb_show_exchange(callback: CallbackQuery) -> None:
+    text, keyboard = await _exchange_view(callback.from_user.id)
+    await callback.message.edit_text(text, reply_markup=keyboard, parse_mode="HTML")
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("exchange:"))
+async def cb_exchange_start(callback: CallbackQuery, state: FSMContext) -> None:
+    _, action, resource_type = callback.data.split(":")
+    await state.update_data(action=action, resource_type=resource_type)
+
+    if action == "sell":
+        prompt = f"چند تا {EXCHANGE_RESOURCE_LABELS[resource_type]} می‌خوای بفروشی؟ (فقط عدد بفرست)"
+    else:
+        prompt = f"چند تا {EXCHANGE_RESOURCE_LABELS[resource_type]} می‌خوای بخری؟ (فقط عدد بفرست)"
+
+    await callback.message.answer(prompt)
+    await state.set_state(ExchangeAction.waiting_for_quantity)
+    await callback.answer()
+
+
+@router.message(ExchangeAction.waiting_for_quantity)
+async def process_exchange_quantity(message: Message, state: FSMContext) -> None:
+    try:
+        quantity = int((message.text or "").strip())
+        assert quantity > 0
+    except (ValueError, AssertionError):
+        await message.answer("یه عدد مثبت بفرست.")
+        return
+
+    data = await state.get_data()
+    await state.clear()
+    action, resource_type = data["action"], data["resource_type"]
+
+    async with get_session() as session:
+        result = await session.execute(select(User).where(*user_scope(message.from_user.id)))
+        user = result.scalar_one_or_none()
+        if user is None:
+            await message.answer("هنوز ثبت‌نام نکردی!")
+            return
+
+        if action == "sell":
+            success_msg, error_msg = sell_resource(user, resource_type, quantity)
+        else:
+            success_msg, error_msg = buy_resource(user, resource_type, quantity)
+
+        if error_msg:
+            await message.answer(f"❌ {error_msg}")
+            return
+
+        user.market_trades_total += 1
+        await session.commit()
+
+    await message.answer(success_msg, reply_markup=market_menu_keyboard())
 
 
 # ---------------------------------------------------------------------------
@@ -133,41 +235,38 @@ async def cb_buy_listing(callback: CallbackQuery) -> None:
 
 @router.callback_query(F.data == "sell_market_start")
 async def cb_sell_market_start(callback: CallbackQuery) -> None:
-    rows = [
-        [InlineKeyboardButton(text=f"{RESOURCE_LABELS[r]}", callback_data=f"sell_resource:{r}")]
-        for r in RESOURCE_LABELS
-    ]
-
     async with get_session() as session:
         result = await session.execute(select(User).where(*user_scope(callback.from_user.id)))
         user = result.scalar_one_or_none()
         items = await get_inventory(session, user.id) if user else []
 
-    for ui in items:
-        rows.append(
-            [InlineKeyboardButton(text=f"{ui.item_type.icon} {ui.item_type.name_fa} (×{ui.quantity})", callback_data=f"sell_item:{ui.item_type_id}")]
-        )
+    rows = [
+        [
+            InlineKeyboardButton(
+                text=f"{ui.item_type.icon} {ui.item_type.name_fa} (×{ui.quantity})",
+                callback_data=f"sell_item:{ui.item_type_id}",
+            )
+        ]
+        for ui in items
+    ]
     rows.append([InlineKeyboardButton(text="🔙 بازگشت", callback_data="show_market_menu")])
 
-    await callback.message.edit_text(
-        "چی می‌خوای بفروشی؟", reply_markup=InlineKeyboardMarkup(inline_keyboard=rows)
-    )
-    await callback.answer()
-
-
-@router.callback_query(F.data.startswith("sell_resource:"))
-async def cb_sell_resource(callback: CallbackQuery, state: FSMContext) -> None:
-    resource_type = callback.data.split(":")[1]
-    await state.update_data(sell_type="resource", resource_type=resource_type)
-    await callback.message.answer(f"چند تا {RESOURCE_LABELS[resource_type]} می‌خوای بفروشی؟ (فقط عدد بفرست)")
-    await state.set_state(SellListing.waiting_for_quantity)
+    if not items:
+        await callback.message.edit_text(
+            "آیتمی برای فروش نداری.\n\n(برای فروش منابع مثل آهن/نفت/غذا از «💱 صرافی منابع» استفاده کن.)",
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=rows),
+        )
+    else:
+        await callback.message.edit_text(
+            "کدوم آیتم رو می‌خوای توی بازار بذاری؟", reply_markup=InlineKeyboardMarkup(inline_keyboard=rows)
+        )
     await callback.answer()
 
 
 @router.callback_query(F.data.startswith("sell_item:"))
 async def cb_sell_item(callback: CallbackQuery, state: FSMContext) -> None:
     item_type_id = int(callback.data.split(":")[1])
-    await state.update_data(sell_type="item", item_type_id=item_type_id)
+    await state.update_data(item_type_id=item_type_id)
     await callback.message.answer("چند عدد می‌خوای بفروشی؟ (فقط عدد بفرست)")
     await state.set_state(SellListing.waiting_for_quantity)
     await callback.answer()
@@ -205,14 +304,9 @@ async def process_sell_price(message: Message, state: FSMContext) -> None:
             await message.answer("هنوز ثبت‌نام نکردی!")
             return
 
-        if data["sell_type"] == "resource":
-            listing = await create_market_listing(
-                session, user, data["quantity"], price, resource_type=data["resource_type"]
-            )
-        else:
-            listing = await create_market_listing(
-                session, user, data["quantity"], price, item_type_id=data["item_type_id"]
-            )
+        listing = await create_market_listing(
+            session, user, data["quantity"], price, item_type_id=data["item_type_id"]
+        )
 
         if isinstance(listing, str):
             await message.answer(f"❌ {listing}")
