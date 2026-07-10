@@ -248,6 +248,13 @@ async def cb_attack_pvp(callback: CallbackQuery) -> None:
     await callback.message.edit_text(text, reply_markup=attack_menu_keyboard(), parse_mode="HTML")
     await callback.answer()
 
+result = await session.execute(
+    select(User).options(selectinload(User.country)).where(*user_scope(callback.from_user.id))
+)
+attacker = result.scalar_one_or_none()
+...
+defender = await session.get(User, defender_id, options=[selectinload(User.country)])
+
 
 def build_pvp_report_text(report: BattleReport, defender_nickname: str, leveled_up: list[int]) -> str:
     won = report.winner == "attacker"
