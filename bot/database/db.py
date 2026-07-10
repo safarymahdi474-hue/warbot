@@ -234,6 +234,14 @@ DEFAULT_RESEARCH_TYPES = [
         "base_research_seconds": 240,
         "max_level": 10,
     },
+    import random
+random_event = None
+if random.random() < 0.12:
+    random_event = "ambush"      # کمین: قدرت دشمن ۱۵٪ کمتر محاسبه میشه
+    npc_power = int(npc_power * 0.85)
+elif random.random() < 0.10:
+    random_event = "critical"    # ضربه بحرانی: قدرت خودت ۱۵٪ بیشتر
+    attacker_power = int(attacker_power * 1.15)
 ]
 
 # لیست اولیه‌ی ماموریت‌ها - فاز ۵
