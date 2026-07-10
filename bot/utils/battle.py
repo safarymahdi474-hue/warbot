@@ -18,6 +18,8 @@ BOT_DIFFICULTIES = {
     "easy": {"label": "🟢 آسان", "power_mult": 0.6, "gold_reward": 150, "xp_reward": 40},
     "medium": {"label": "🟡 متوسط", "power_mult": 1.0, "gold_reward": 350, "xp_reward": 90},
     "hard": {"label": "🔴 سخت", "power_mult": 1.5, "gold_reward": 700, "xp_reward": 180},
+    "elite": {"label": "🟣 نخبه", "power_mult": 2.2, "gold_reward": 1400, "xp_reward": 320},
+    "boss": {"label": "☠️ باس فصلی", "power_mult": 3.2, "gold_reward": 3000, "xp_reward": 600},
 }
 
 
