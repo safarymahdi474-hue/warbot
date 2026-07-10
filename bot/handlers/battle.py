@@ -100,7 +100,26 @@ result = await session.execute(
     select(User).options(selectinload(User.country)).where(*user_scope(callback.from_user.id))
 )
 attacker = result.scalar_one_or_none()
+async def cb_attack_bot_menu(callback: CallbackQuery) -> None:
+    async with get_session() as session:
+        result = await session.execute(select(User).where(*user_scope(callback.from_user.id)))
+        user = result.scalar_one_or_none()
+        user_level = user.level if user else 1
 
+    rows = []
+    min_level = {"elite": 10, "boss": 18}
+    for key, d in BOT_DIFFICULTIES.items():
+        if user_level < min_level.get(key, 1):
+            rows.append([InlineKeyboardButton(text=f"🔒 {d['label']} (لول {min_level[key]}+)", callback_data="building_max")])
+        else:
+            rows.append([InlineKeyboardButton(text=d["label"], callback_data=f"attack_bot:{key}")])
+    rows.append([InlineKeyboardButton(text="🔙 بازگشت", callback_data="show_attack_menu")])
+
+    await callback.message.edit_text(
+        "🤖 سختی نبرد رو انتخاب کن (هرچی سخت‌تر، پاداش بیشتر ولی ریسک بیشتر):",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=rows),
+    )
+    await callback.answer()
 
 def build_bot_report_text(report: BattleReport, leveled_up: list[int]) -> str:
     won = report.winner == "attacker"
