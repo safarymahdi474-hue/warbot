@@ -61,6 +61,12 @@ class Settings:
     ALLIANCE_CHAT_HISTORY_LIMIT: int = 20
     ALLIANCE_CREATE_COST_GOLD: int = 2000
 
+    # --- صرافی منابع (فروش/خرید آنی با ربات) ---
+    EXCHANGE_SELL_PRICE_IRON: int = 8   # هر واحد آهن رو ربات چقدر می‌خره
+    EXCHANGE_SELL_PRICE_OIL: int = 10
+    EXCHANGE_SELL_PRICE_FOOD: int = 4
+    EXCHANGE_BUY_MARKUP_PERCENT: int = 15  # قیمت خرید از ربات نسبت به قیمت فروش چقدر بالاتره
+
     # --- بازار، حراج و آیتم (فاز ۷) ---
     MARKET_TAX_PERCENT: int = 5  # درصدی که از فروش کم میشه (نه به فروشنده میره نه به خریدار)
     AUCTION_MIN_DURATION_HOURS: int = 1
