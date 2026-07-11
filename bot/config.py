@@ -83,6 +83,14 @@ class Settings:
     # آیدی عددی تلگرام ادمین‌ها، جدا شده با کاما، مثلا "111111,222222"
     ADMIN_TELEGRAM_IDS: str = os.getenv("ADMIN_TELEGRAM_IDS", "")
 
+    # --- بیانیه ملی (فاز ۱۳) ---
+    # آیدی عددی کانال بیانیه‌ها (کانالی که ربات توش ادمینه). برای کانال‌ها معمولاً
+    # با -100 شروع میشه، مثلا "-1001234567890". اگه خالی/۰ باشه، تایید بیانیه غیرفعاله.
+    STATEMENT_CHANNEL_ID: int = int(os.getenv("STATEMENT_CHANNEL_ID", "0") or "0")
+    STATEMENT_COOLDOWN_HOURS: int = 6  # هر کاربر هر چند ساعت یک‌بار میتونه بیانیه جدید ثبت کنه
+    STATEMENT_MIN_LENGTH: int = 10
+    STATEMENT_MAX_LENGTH: int = 1000
+
     @property
     def admin_ids(self) -> set[int]:
         return {int(x) for x in self.ADMIN_TELEGRAM_IDS.split(",") if x.strip().isdigit()}
