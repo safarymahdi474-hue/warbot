@@ -2,11 +2,25 @@ from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
 from bot.database.models import Country, UserBuilding
 
+# هر صفحه حداکثر این تعداد کشور نشون میده (۴۰ کشور = ۲۰ ردیف + ۱ ردیف ناوبری،
+# جمعاً حداکثر ۲۱ دکمه در هر پیام - کاملاً زیر محدودیت ۱۰۰ تایی تلگرام)
+COUNTRIES_PAGE_SIZE = 40
 
-def countries_keyboard(countries: list[Country]) -> InlineKeyboardMarkup:
+
+def countries_keyboard(countries: list[Country], page: int = 0) -> InlineKeyboardMarkup:
+    """
+    کیبورد صفحه‌بندی‌شده‌ی انتخاب کشور. countries باید از قبل به ترتیب پایدار
+    (مثلا بر اساس id) مرتب شده باشه تا شماره‌ی صفحه‌ها هر بار یکسان بمونه.
+    """
+    total_pages = max(1, (len(countries) + COUNTRIES_PAGE_SIZE - 1) // COUNTRIES_PAGE_SIZE)
+    page = max(0, min(page, total_pages - 1))
+
+    start = page * COUNTRIES_PAGE_SIZE
+    page_items = countries[start : start + COUNTRIES_PAGE_SIZE]
+
     rows = []
     row = []
-    for i, c in enumerate(countries, start=1):
+    for i, c in enumerate(page_items, start=1):
         row.append(
             InlineKeyboardButton(
                 text=f"{c.flag_emoji} {c.name_fa}",
@@ -18,6 +32,16 @@ def countries_keyboard(countries: list[Country]) -> InlineKeyboardMarkup:
             row = []
     if row:
         rows.append(row)
+
+    if total_pages > 1:
+        nav_row = []
+        if page > 0:
+            nav_row.append(InlineKeyboardButton(text="⬅️ قبلی", callback_data=f"countries_page:{page - 1}"))
+        nav_row.append(InlineKeyboardButton(text=f"📄 {page + 1}/{total_pages}", callback_data="countries_noop"))
+        if page < total_pages - 1:
+            nav_row.append(InlineKeyboardButton(text="➡️ بعدی", callback_data=f"countries_page:{page + 1}"))
+        rows.append(nav_row)
+
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
