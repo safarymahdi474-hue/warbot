@@ -1,6 +1,6 @@
 from aiogram import F, Router
 from aiogram.filters import Command
-from aiogram.types import CallbackQuery, Message
+from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
 from sqlalchemy import select
 
 from bot.database.db import get_session
@@ -18,6 +18,12 @@ def make_bar(current: int, maximum: int, length: int = 10) -> str:
         maximum = 1
     filled = round(length * min(current, maximum) / maximum)
     return "🟩" * filled + "⬜️" * (length - filled)
+
+
+def profile_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[[InlineKeyboardButton(text="🔙 منوی اصلی", callback_data="show_main_menu")]]
+    )
 
 
 def build_profile_text(user: User) -> str:
@@ -60,7 +66,7 @@ async def cmd_profile(message: Message) -> None:
     if user is None:
         await message.answer("هنوز ثبت‌نام نکردی! دستور /start رو بزن.")
         return
-    await message.answer(build_profile_text(user), parse_mode="HTML")
+    await message.answer(build_profile_text(user), reply_markup=profile_keyboard(), parse_mode="HTML")
 
 
 @router.callback_query(F.data == "show_profile")
@@ -69,5 +75,5 @@ async def cb_profile(callback: CallbackQuery) -> None:
     if user is None:
         await callback.answer("هنوز ثبت‌نام نکردی! /start رو بزن.", show_alert=True)
         return
-    await callback.message.answer(build_profile_text(user), parse_mode="HTML")
+    await callback.message.answer(build_profile_text(user), reply_markup=profile_keyboard(), parse_mode="HTML")
     await callback.answer()
