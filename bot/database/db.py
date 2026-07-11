@@ -19,19 +19,182 @@ async_session = async_sessionmaker(engine, expire_on_commit=False)
 
 # لیست اولیه کشورها/جناح‌ها - می‌تونی بعدا از پنل ادمین اضافه/ویرایش کنی
 DEFAULT_COUNTRIES = [
-    # --- کشورهای واقعی ---
-    {"name_fa": "ایران", "flag_emoji": "🇮🇷", "resource_bonus_percent": 5, "military_bonus_percent": 0},
-    {"name_fa": "روسیه", "flag_emoji": "🇷🇺", "resource_bonus_percent": 0, "military_bonus_percent": 10},
-    {"name_fa": "آمریکا", "flag_emoji": "🇺🇸", "resource_bonus_percent": 0, "military_bonus_percent": 10},
-    {"name_fa": "چین", "flag_emoji": "🇨🇳", "resource_bonus_percent": 10, "military_bonus_percent": 0},
-    {"name_fa": "آلمان", "flag_emoji": "🇩🇪", "resource_bonus_percent": 5, "military_bonus_percent": 5},
+    # --- خاورمیانه و آسیای غربی ---
+    {"name_fa": "ایران", "flag_emoji": "🇮🇷", "resource_bonus_percent": 5, "military_bonus_percent": 6},
+    {"name_fa": "عراق", "flag_emoji": "🇮🇶", "resource_bonus_percent": 6, "military_bonus_percent": 4},
+    {"name_fa": "عربستان سعودی", "flag_emoji": "🇸🇦", "resource_bonus_percent": 10, "military_bonus_percent": 6},
+    {"name_fa": "امارات متحده عربی", "flag_emoji": "🇦🇪", "resource_bonus_percent": 9, "military_bonus_percent": 4},
+    {"name_fa": "قطر", "flag_emoji": "🇶🇦", "resource_bonus_percent": 11, "military_bonus_percent": 2},
+    {"name_fa": "کویت", "flag_emoji": "🇰🇼", "resource_bonus_percent": 10, "military_bonus_percent": 2},
+    {"name_fa": "بحرین", "flag_emoji": "🇧🇭", "resource_bonus_percent": 6, "military_bonus_percent": 2},
+    {"name_fa": "عمان", "flag_emoji": "🇴🇲", "resource_bonus_percent": 7, "military_bonus_percent": 3},
+    {"name_fa": "یمن", "flag_emoji": "🇾🇪", "resource_bonus_percent": 3, "military_bonus_percent": 3},
+    {"name_fa": "اردن", "flag_emoji": "🇯🇴", "resource_bonus_percent": 3, "military_bonus_percent": 4},
+    {"name_fa": "لبنان", "flag_emoji": "🇱🇧", "resource_bonus_percent": 3, "military_bonus_percent": 2},
+    {"name_fa": "سوریه", "flag_emoji": "🇸🇾", "resource_bonus_percent": 3, "military_bonus_percent": 3},
+    {"name_fa": "فلسطین", "flag_emoji": "🇵🇸", "resource_bonus_percent": 2, "military_bonus_percent": 2},
+    {"name_fa": "اسرائیل", "flag_emoji": "🇮🇱", "resource_bonus_percent": 4, "military_bonus_percent": 10},
     {"name_fa": "ترکیه", "flag_emoji": "🇹🇷", "resource_bonus_percent": 5, "military_bonus_percent": 5},
-    {"name_fa": "ژاپن", "flag_emoji": "🇯🇵", "resource_bonus_percent": 5, "military_bonus_percent": 7},
-    {"name_fa": "برزیل", "flag_emoji": "🇧🇷", "resource_bonus_percent": 10, "military_bonus_percent": 2},
+    {"name_fa": "قبرس", "flag_emoji": "🇨🇾", "resource_bonus_percent": 3, "military_bonus_percent": 2},
+
+    # --- آسیای جنوبی ---
+    {"name_fa": "افغانستان", "flag_emoji": "🇦🇫", "resource_bonus_percent": 4, "military_bonus_percent": 3},
+    {"name_fa": "پاکستان", "flag_emoji": "🇵🇰", "resource_bonus_percent": 5, "military_bonus_percent": 7},
     {"name_fa": "هند", "flag_emoji": "🇮🇳", "resource_bonus_percent": 8, "military_bonus_percent": 4},
-    {"name_fa": "مصر", "flag_emoji": "🇪🇬", "resource_bonus_percent": 6, "military_bonus_percent": 5},
+    {"name_fa": "بنگلادش", "flag_emoji": "🇧🇩", "resource_bonus_percent": 6, "military_bonus_percent": 2},
+    {"name_fa": "سریلانکا", "flag_emoji": "🇱🇰", "resource_bonus_percent": 5, "military_bonus_percent": 2},
+    {"name_fa": "نپال", "flag_emoji": "🇳🇵", "resource_bonus_percent": 4, "military_bonus_percent": 2},
+    {"name_fa": "بوتان", "flag_emoji": "🇧🇹", "resource_bonus_percent": 3, "military_bonus_percent": 1},
+    {"name_fa": "مالدیو", "flag_emoji": "🇲🇻", "resource_bonus_percent": 2, "military_bonus_percent": 1},
+
+    # --- شرق آسیا ---
+    {"name_fa": "چین", "flag_emoji": "🇨🇳", "resource_bonus_percent": 10, "military_bonus_percent": 0},
+    {"name_fa": "ژاپن", "flag_emoji": "🇯🇵", "resource_bonus_percent": 5, "military_bonus_percent": 7},
     {"name_fa": "کره جنوبی", "flag_emoji": "🇰🇷", "resource_bonus_percent": 3, "military_bonus_percent": 9},
+    {"name_fa": "کره شمالی", "flag_emoji": "🇰🇵", "resource_bonus_percent": 2, "military_bonus_percent": 9},
+    {"name_fa": "مغولستان", "flag_emoji": "🇲🇳", "resource_bonus_percent": 5, "military_bonus_percent": 3},
+    {"name_fa": "تایوان", "flag_emoji": "🇹🇼", "resource_bonus_percent": 4, "military_bonus_percent": 6},
+
+    # --- جنوب شرق آسیا ---
+    {"name_fa": "ویتنام", "flag_emoji": "🇻🇳", "resource_bonus_percent": 6, "military_bonus_percent": 5},
+    {"name_fa": "لائوس", "flag_emoji": "🇱🇦", "resource_bonus_percent": 4, "military_bonus_percent": 1},
+    {"name_fa": "کامبوج", "flag_emoji": "🇰🇭", "resource_bonus_percent": 4, "military_bonus_percent": 1},
+    {"name_fa": "تایلند", "flag_emoji": "🇹🇭", "resource_bonus_percent": 6, "military_bonus_percent": 4},
+    {"name_fa": "میانمار", "flag_emoji": "🇲🇲", "resource_bonus_percent": 5, "military_bonus_percent": 3},
+    {"name_fa": "مالزی", "flag_emoji": "🇲🇾", "resource_bonus_percent": 7, "military_bonus_percent": 3},
+    {"name_fa": "سنگاپور", "flag_emoji": "🇸🇬", "resource_bonus_percent": 8, "military_bonus_percent": 4},
+    {"name_fa": "اندونزی", "flag_emoji": "🇮🇩", "resource_bonus_percent": 8, "military_bonus_percent": 4},
+    {"name_fa": "فیلیپین", "flag_emoji": "🇵🇭", "resource_bonus_percent": 5, "military_bonus_percent": 2},
+    {"name_fa": "برونئی", "flag_emoji": "🇧🇳", "resource_bonus_percent": 9, "military_bonus_percent": 1},
+    {"name_fa": "تیمور شرقی", "flag_emoji": "🇹🇱", "resource_bonus_percent": 3, "military_bonus_percent": 1},
+
+    # --- آسیای مرکزی و قفقاز ---
+    {"name_fa": "قزاقستان", "flag_emoji": "🇰🇿", "resource_bonus_percent": 9, "military_bonus_percent": 3},
+    {"name_fa": "ازبکستان", "flag_emoji": "🇺🇿", "resource_bonus_percent": 6, "military_bonus_percent": 3},
+    {"name_fa": "ترکمنستان", "flag_emoji": "🇹🇲", "resource_bonus_percent": 8, "military_bonus_percent": 2},
+    {"name_fa": "تاجیکستان", "flag_emoji": "🇹🇯", "resource_bonus_percent": 4, "military_bonus_percent": 1},
+    {"name_fa": "قرقیزستان", "flag_emoji": "🇰🇬", "resource_bonus_percent": 4, "military_bonus_percent": 1},
+    {"name_fa": "آذربایجان", "flag_emoji": "🇦🇿", "resource_bonus_percent": 7, "military_bonus_percent": 4},
+    {"name_fa": "ارمنستان", "flag_emoji": "🇦🇲", "resource_bonus_percent": 3, "military_bonus_percent": 3},
+    {"name_fa": "گرجستان", "flag_emoji": "🇬🇪", "resource_bonus_percent": 4, "military_bonus_percent": 2},
+
+    # --- اروپای شرقی و روسیه ---
+    {"name_fa": "روسیه", "flag_emoji": "🇷🇺", "resource_bonus_percent": 0, "military_bonus_percent": 10},
+    {"name_fa": "اوکراین", "flag_emoji": "🇺🇦", "resource_bonus_percent": 7, "military_bonus_percent": 5},
+    {"name_fa": "بلاروس", "flag_emoji": "🇧🇾", "resource_bonus_percent": 5, "military_bonus_percent": 3},
+    {"name_fa": "مولداوی", "flag_emoji": "🇲🇩", "resource_bonus_percent": 4, "military_bonus_percent": 1},
+    {"name_fa": "لهستان", "flag_emoji": "🇵🇱", "resource_bonus_percent": 5, "military_bonus_percent": 6},
+
+    # --- اروپای غربی ---
+    {"name_fa": "آلمان", "flag_emoji": "🇩🇪", "resource_bonus_percent": 5, "military_bonus_percent": 5},
     {"name_fa": "فرانسه", "flag_emoji": "🇫🇷", "resource_bonus_percent": 4, "military_bonus_percent": 8},
+    {"name_fa": "بریتانیا", "flag_emoji": "🇬🇧", "resource_bonus_percent": 3, "military_bonus_percent": 8},
+    {"name_fa": "ایرلند", "flag_emoji": "🇮🇪", "resource_bonus_percent": 4, "military_bonus_percent": 1},
+    {"name_fa": "هلند", "flag_emoji": "🇳🇱", "resource_bonus_percent": 5, "military_bonus_percent": 3},
+    {"name_fa": "بلژیک", "flag_emoji": "🇧🇪", "resource_bonus_percent": 4, "military_bonus_percent": 2},
+    {"name_fa": "لوکزامبورگ", "flag_emoji": "🇱🇺", "resource_bonus_percent": 6, "military_bonus_percent": 1},
+    {"name_fa": "سوئیس", "flag_emoji": "🇨🇭", "resource_bonus_percent": 5, "military_bonus_percent": 3},
+    {"name_fa": "اتریش", "flag_emoji": "🇦🇹", "resource_bonus_percent": 4, "military_bonus_percent": 2},
+
+    # --- اروپای جنوبی ---
+    {"name_fa": "ایتالیا", "flag_emoji": "🇮🇹", "resource_bonus_percent": 4, "military_bonus_percent": 5},
+    {"name_fa": "اسپانیا", "flag_emoji": "🇪🇸", "resource_bonus_percent": 5, "military_bonus_percent": 4},
+    {"name_fa": "پرتغال", "flag_emoji": "🇵🇹", "resource_bonus_percent": 4, "military_bonus_percent": 2},
+    {"name_fa": "یونان", "flag_emoji": "🇬🇷", "resource_bonus_percent": 4, "military_bonus_percent": 4},
+    {"name_fa": "مالت", "flag_emoji": "🇲🇹", "resource_bonus_percent": 3, "military_bonus_percent": 1},
+
+    # --- اسکاندیناوی و بالتیک ---
+    {"name_fa": "سوئد", "flag_emoji": "🇸🇪", "resource_bonus_percent": 5, "military_bonus_percent": 4},
+    {"name_fa": "نروژ", "flag_emoji": "🇳🇴", "resource_bonus_percent": 8, "military_bonus_percent": 3},
+    {"name_fa": "دانمارک", "flag_emoji": "🇩🇰", "resource_bonus_percent": 5, "military_bonus_percent": 2},
+    {"name_fa": "فنلاند", "flag_emoji": "🇫🇮", "resource_bonus_percent": 6, "military_bonus_percent": 3},
+    {"name_fa": "ایسلند", "flag_emoji": "🇮🇸", "resource_bonus_percent": 4, "military_bonus_percent": 0},
+    {"name_fa": "استونی", "flag_emoji": "🇪🇪", "resource_bonus_percent": 4, "military_bonus_percent": 2},
+    {"name_fa": "لتونی", "flag_emoji": "🇱🇻", "resource_bonus_percent": 4, "military_bonus_percent": 2},
+    {"name_fa": "لیتوانی", "flag_emoji": "🇱🇹", "resource_bonus_percent": 4, "military_bonus_percent": 2},
+
+    # --- اروپای مرکزی و بالکان ---
+    {"name_fa": "چک", "flag_emoji": "🇨🇿", "resource_bonus_percent": 5, "military_bonus_percent": 3},
+    {"name_fa": "اسلواکی", "flag_emoji": "🇸🇰", "resource_bonus_percent": 5, "military_bonus_percent": 2},
+    {"name_fa": "مجارستان", "flag_emoji": "🇭🇺", "resource_bonus_percent": 5, "military_bonus_percent": 3},
+    {"name_fa": "رومانی", "flag_emoji": "🇷🇴", "resource_bonus_percent": 6, "military_bonus_percent": 3},
+    {"name_fa": "بلغارستان", "flag_emoji": "🇧🇬", "resource_bonus_percent": 5, "military_bonus_percent": 2},
+    {"name_fa": "صربستان", "flag_emoji": "🇷🇸", "resource_bonus_percent": 5, "military_bonus_percent": 4},
+    {"name_fa": "کرواسی", "flag_emoji": "🇭🇷", "resource_bonus_percent": 4, "military_bonus_percent": 2},
+    {"name_fa": "اسلوونی", "flag_emoji": "🇸🇮", "resource_bonus_percent": 4, "military_bonus_percent": 1},
+    {"name_fa": "بوسنی و هرزگوین", "flag_emoji": "🇧🇦", "resource_bonus_percent": 4, "military_bonus_percent": 2},
+    {"name_fa": "مونته‌نگرو", "flag_emoji": "🇲🇪", "resource_bonus_percent": 3, "military_bonus_percent": 1},
+    {"name_fa": "مقدونیه شمالی", "flag_emoji": "🇲🇰", "resource_bonus_percent": 3, "military_bonus_percent": 1},
+    {"name_fa": "آلبانی", "flag_emoji": "🇦🇱", "resource_bonus_percent": 3, "military_bonus_percent": 1},
+    {"name_fa": "کوزوو", "flag_emoji": "🇽🇰", "resource_bonus_percent": 2, "military_bonus_percent": 1},
+
+    # --- آفریقای شمالی ---
+    {"name_fa": "مصر", "flag_emoji": "🇪🇬", "resource_bonus_percent": 6, "military_bonus_percent": 5},
+    {"name_fa": "لیبی", "flag_emoji": "🇱🇾", "resource_bonus_percent": 8, "military_bonus_percent": 2},
+    {"name_fa": "تونس", "flag_emoji": "🇹🇳", "resource_bonus_percent": 5, "military_bonus_percent": 2},
+    {"name_fa": "الجزایر", "flag_emoji": "🇩🇿", "resource_bonus_percent": 9, "military_bonus_percent": 5},
+    {"name_fa": "مراکش", "flag_emoji": "🇲🇦", "resource_bonus_percent": 6, "military_bonus_percent": 3},
+    {"name_fa": "سودان", "flag_emoji": "🇸🇩", "resource_bonus_percent": 6, "military_bonus_percent": 3},
+    {"name_fa": "سودان جنوبی", "flag_emoji": "🇸🇸", "resource_bonus_percent": 5, "military_bonus_percent": 2},
+
+    # --- شاخ آفریقا و شرق آفریقا ---
+    {"name_fa": "اتیوپی", "flag_emoji": "🇪🇹", "resource_bonus_percent": 6, "military_bonus_percent": 3},
+    {"name_fa": "اریتره", "flag_emoji": "🇪🇷", "resource_bonus_percent": 3, "military_bonus_percent": 2},
+    {"name_fa": "جیبوتی", "flag_emoji": "🇩🇯", "resource_bonus_percent": 3, "military_bonus_percent": 1},
+    {"name_fa": "سومالی", "flag_emoji": "🇸🇴", "resource_bonus_percent": 3, "military_bonus_percent": 2},
+    {"name_fa": "کنیا", "flag_emoji": "🇰🇪", "resource_bonus_percent": 6, "military_bonus_percent": 2},
+    {"name_fa": "اوگاندا", "flag_emoji": "🇺🇬", "resource_bonus_percent": 5, "military_bonus_percent": 2},
+    {"name_fa": "تانزانیا", "flag_emoji": "🇹🇿", "resource_bonus_percent": 6, "military_bonus_percent": 1},
+    {"name_fa": "رواندا", "flag_emoji": "🇷🇼", "resource_bonus_percent": 4, "military_bonus_percent": 2},
+    {"name_fa": "بروندی", "flag_emoji": "🇧🇮", "resource_bonus_percent": 3, "military_bonus_percent": 1},
+
+    # --- غرب آفریقا ---
+    {"name_fa": "نیجریه", "flag_emoji": "🇳🇬", "resource_bonus_percent": 8, "military_bonus_percent": 4},
+    {"name_fa": "غنا", "flag_emoji": "🇬🇭", "resource_bonus_percent": 6, "military_bonus_percent": 2},
+    {"name_fa": "سنگال", "flag_emoji": "🇸🇳", "resource_bonus_percent": 5, "military_bonus_percent": 1},
+    {"name_fa": "مالی", "flag_emoji": "🇲🇱", "resource_bonus_percent": 5, "military_bonus_percent": 2},
+    {"name_fa": "نیجر", "flag_emoji": "🇳🇪", "resource_bonus_percent": 5, "military_bonus_percent": 2},
+    {"name_fa": "چاد", "flag_emoji": "🇹🇩", "resource_bonus_percent": 5, "military_bonus_percent": 2},
+    {"name_fa": "کامرون", "flag_emoji": "🇨🇲", "resource_bonus_percent": 6, "military_bonus_percent": 2},
+
+    # --- جنوب و مرکز آفریقا ---
+    {"name_fa": "آفریقای جنوبی", "flag_emoji": "🇿🇦", "resource_bonus_percent": 8, "military_bonus_percent": 5},
+    {"name_fa": "زیمبابوه", "flag_emoji": "🇿🇼", "resource_bonus_percent": 5, "military_bonus_percent": 2},
+    {"name_fa": "زامبیا", "flag_emoji": "🇿🇲", "resource_bonus_percent": 6, "military_bonus_percent": 1},
+    {"name_fa": "بوتسوانا", "flag_emoji": "🇧🇼", "resource_bonus_percent": 6, "military_bonus_percent": 1},
+    {"name_fa": "نامیبیا", "flag_emoji": "🇳🇦", "resource_bonus_percent": 6, "military_bonus_percent": 1},
+    {"name_fa": "آنگولا", "flag_emoji": "🇦🇴", "resource_bonus_percent": 8, "military_bonus_percent": 3},
+    {"name_fa": "موزامبیک", "flag_emoji": "🇲🇿", "resource_bonus_percent": 5, "military_bonus_percent": 1},
+    {"name_fa": "کنگو", "flag_emoji": "🇨🇩", "resource_bonus_percent": 9, "military_bonus_percent": 2},
+    {"name_fa": "گابن", "flag_emoji": "🇬🇦", "resource_bonus_percent": 7, "military_bonus_percent": 1},
+
+    # --- آمریکای شمالی ---
+    {"name_fa": "آمریکا", "flag_emoji": "🇺🇸", "resource_bonus_percent": 0, "military_bonus_percent": 10},
+    {"name_fa": "کانادا", "flag_emoji": "🇨🇦", "resource_bonus_percent": 9, "military_bonus_percent": 4},
+    {"name_fa": "مکزیک", "flag_emoji": "🇲🇽", "resource_bonus_percent": 6, "military_bonus_percent": 3},
+    {"name_fa": "گواتمالا", "flag_emoji": "🇬🇹", "resource_bonus_percent": 4, "military_bonus_percent": 1},
+    {"name_fa": "هندوراس", "flag_emoji": "🇭🇳", "resource_bonus_percent": 4, "military_bonus_percent": 1},
+    {"name_fa": "کوبا", "flag_emoji": "🇨🇺", "resource_bonus_percent": 4, "military_bonus_percent": 3},
+    {"name_fa": "هائیتی", "flag_emoji": "🇭🇹", "resource_bonus_percent": 2, "military_bonus_percent": 1},
+    {"name_fa": "جامائیکا", "flag_emoji": "🇯🇲", "resource_bonus_percent": 3, "military_bonus_percent": 1},
+
+    # --- آمریکای جنوبی ---
+    {"name_fa": "برزیل", "flag_emoji": "🇧🇷", "resource_bonus_percent": 10, "military_bonus_percent": 2},
+    {"name_fa": "آرژانتین", "flag_emoji": "🇦🇷", "resource_bonus_percent": 8, "military_bonus_percent": 3},
+    {"name_fa": "شیلی", "flag_emoji": "🇨🇱", "resource_bonus_percent": 7, "military_bonus_percent": 3},
+    {"name_fa": "کلمبیا", "flag_emoji": "🇨🇴", "resource_bonus_percent": 7, "military_bonus_percent": 3},
+    {"name_fa": "پرو", "flag_emoji": "🇵🇪", "resource_bonus_percent": 7, "military_bonus_percent": 2},
+    {"name_fa": "ونزوئلا", "flag_emoji": "🇻🇪", "resource_bonus_percent": 9, "military_bonus_percent": 3},
+    {"name_fa": "اکوادور", "flag_emoji": "🇪🇨", "resource_bonus_percent": 6, "military_bonus_percent": 1},
+    {"name_fa": "بولیوی", "flag_emoji": "🇧🇴", "resource_bonus_percent": 7, "military_bonus_percent": 1},
+    {"name_fa": "پاراگوئه", "flag_emoji": "🇵🇾", "resource_bonus_percent": 6, "military_bonus_percent": 1},
+    {"name_fa": "اروگوئه", "flag_emoji": "🇺🇾", "resource_bonus_percent": 5, "military_bonus_percent": 1},
+
+    # --- اقیانوسیه ---
+    {"name_fa": "استرالیا", "flag_emoji": "🇦🇺", "resource_bonus_percent": 8, "military_bonus_percent": 5},
+    {"name_fa": "نیوزیلند", "flag_emoji": "🇳🇿", "resource_bonus_percent": 6, "military_bonus_percent": 2},
+    {"name_fa": "فیجی", "flag_emoji": "🇫🇯", "resource_bonus_percent": 4, "military_bonus_percent": 1},
+    {"name_fa": "پاپوآ گینه نو", "flag_emoji": "🇵🇬", "resource_bonus_percent": 5, "military_bonus_percent": 1},
 
     # --- جناح‌های تخیلی (بدون ارجاع به هیچ گروه واقعی) ---
     {"name_fa": "امپراتوری شمال", "flag_emoji": "🐺", "resource_bonus_percent": 2, "military_bonus_percent": 12},
