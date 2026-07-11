@@ -16,6 +16,7 @@ def settings_keyboard(user: User) -> InlineKeyboardMarkup:
         inline_keyboard=[
             [InlineKeyboardButton(text=notif_label, callback_data="toggle_notifications")],
             [InlineKeyboardButton(text="🆘 پشتیبانی", callback_data="show_support")],
+            [InlineKeyboardButton(text="🔙 منوی اصلی", callback_data="show_main_menu")],
         ]
     )
 
@@ -52,7 +53,10 @@ async def cb_show_settings(callback: CallbackQuery) -> None:
             return
         text, keyboard = build_settings_text(user), settings_keyboard(user)
 
-    await callback.message.edit_text(text, reply_markup=keyboard, parse_mode="HTML")
+    try:
+        await callback.message.edit_text(text, reply_markup=keyboard, parse_mode="HTML")
+    except Exception:
+        await callback.message.answer(text, reply_markup=keyboard, parse_mode="HTML")
     await callback.answer()
 
 
