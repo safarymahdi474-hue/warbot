@@ -25,6 +25,7 @@ from bot.handlers import (
     settings as settings_handler,
     shop,
     start,
+    statements,
     support,
 )
 from bot.middlewares.ban_check import BanCheckMiddleware
@@ -55,6 +56,7 @@ async def main() -> None:
     dp.include_router(missions.router)
     dp.include_router(rewards.router)
     dp.include_router(alliance.router)
+    dp.include_router(statements.router)
     dp.include_router(inventory.router)
     dp.include_router(market.router)
     dp.include_router(achievements.router)
