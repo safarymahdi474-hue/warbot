@@ -45,7 +45,8 @@ async def cmd_admin(message: Message) -> None:
         "/unban نیک‌نیم — آن‌بن کردن کاربر\n"
         "/broadcast متن — پیام همگانی به همه کاربران\n"
         "/serverstats — آمار کامل سرور\n"
-        "/adminlogs — لاگ اقدامات اخیر",
+        "/adminlogs — لاگ اقدامات اخیر\n"
+        "/pendingstatements — بیانیه‌های در انتظار تایید",
         parse_mode="HTML",
     )
 
