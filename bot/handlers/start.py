@@ -2,13 +2,11 @@ import secrets
 import string
 
 from aiogram import F, Router
-from aiogram.exceptions import TelegramBadRequest
 from aiogram.filters import CommandObject, CommandStart
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import CallbackQuery, ChatMemberUpdated, Message
 from sqlalchemy import select
-from sqlalchemy.exc import IntegrityError
 
 from bot.config import settings
 from bot.database.db import get_session
@@ -26,7 +24,6 @@ from bot.database.models import (
     UserUnit,
 )
 from bot.keyboards.menus import countries_keyboard, main_menu_keyboard
-from bot.utils.countries import get_taken_country_ids, is_country_taken
 
 router = Router(name="start")
 
@@ -60,27 +57,17 @@ def generate_referral_code() -> str:
     return "".join(secrets.choice(alphabet) for _ in range(6))
 
 
-async def _send_country_picker(message_or_callback, state: FSMContext, page: int = 0, edit: bool = False) -> None:
-    """کشورها رو بارگذاری، آزاد/گرفته‌شده رو مشخص و کیبورد صفحه‌ی موردنظر رو نشون میده."""
-    async with get_session() as session:
-        result = await session.execute(select(Country).order_by(Country.id))
-        countries = list(result.scalars().all())
-        taken_ids = await get_taken_country_ids(session)
+# ---------------------------------------------------------------------------
+# بازگشت مشترک به منوی اصلی - از همه‌ی بخش‌های ربات صدا زده میشه
+# ---------------------------------------------------------------------------
 
-    await state.update_data(country_page=page)
-    keyboard = countries_keyboard(countries, taken_ids, page)
-    text = (
-        "🌍 کشور یا گروهکت رو انتخاب کن\n"
-        "(✅ یعنی قبلاً توسط یکی دیگه توی همین فضای بازی گرفته شده)"
-    )
-
-    if edit:
-        try:
-            await message_or_callback.message.edit_text(text, reply_markup=keyboard)
-        except TelegramBadRequest:
-            pass  # پیام تغییری نکرده (مثلاً همون صفحه دوباره رفرش شده) - مشکلی نیست
-    else:
-        await message_or_callback.answer(text, reply_markup=keyboard)
+@router.callback_query(F.data == "show_main_menu")
+async def cb_show_main_menu(callback: CallbackQuery) -> None:
+    try:
+        await callback.message.edit_text("🏠 منوی اصلی:", reply_markup=main_menu_keyboard())
+    except Exception:
+        await callback.message.answer("🏠 منوی اصلی:", reply_markup=main_menu_keyboard())
+    await callback.answer()
 
 
 @router.message(CommandStart())
@@ -128,36 +115,18 @@ async def process_nickname(message: Message, state: FSMContext) -> None:
         return
 
     await state.update_data(nickname=nickname)
+
+    async with get_session() as session:
+        result = await session.execute(select(Country))
+        countries = result.scalars().all()
+
+    await message.answer(
+        "عالی! حالا کشور یا جناحت رو انتخاب کن 🌍\n"
+        "(این انتخاب روی منابع و قدرت نظامی اولیه‌ات تاثیر داره)",
+        reply_markup=countries_keyboard(countries),
+    )
     await state.set_state(Registration.waiting_for_country)
 
-    await message.answer("عالی! حالا کشور یا جناحت رو انتخاب کن 🌍\n(این انتخاب روی منابع و قدرت نظامی اولیه‌ات تاثیر داره)")
-    await _send_country_picker(message, state, page=0, edit=False)
-
-
-# ---------------------------------------------------------------------------
-# صفحه‌بندی لیست کشور/گروهک (۲۰۰ مورده، توی یه پیام جا نمیشه)
-# ---------------------------------------------------------------------------
-
-@router.callback_query(Registration.waiting_for_country, F.data.startswith("country_page:"))
-async def process_country_page(callback: CallbackQuery, state: FSMContext) -> None:
-    page = int(callback.data.split(":")[1])
-    await _send_country_picker(callback, state, page=page, edit=True)
-    await callback.answer()
-
-
-@router.callback_query(Registration.waiting_for_country, F.data == "country_page_noop")
-async def process_country_page_noop(callback: CallbackQuery) -> None:
-    await callback.answer()
-
-
-@router.callback_query(Registration.waiting_for_country, F.data == "taken_country")
-async def process_taken_country(callback: CallbackQuery) -> None:
-    await callback.answer("این کشور/گروهک قبلاً توسط یکی دیگه گرفته شده. یکی دیگه رو انتخاب کن.", show_alert=True)
-
-
-# ---------------------------------------------------------------------------
-# انتخاب نهایی کشور/گروهک
-# ---------------------------------------------------------------------------
 
 @router.callback_query(Registration.waiting_for_country, F.data.startswith("pick_country:"))
 async def process_country(callback: CallbackQuery, state: FSMContext) -> None:
@@ -165,21 +134,11 @@ async def process_country(callback: CallbackQuery, state: FSMContext) -> None:
     data = await state.get_data()
     nickname = data["nickname"]
     referred_by_code = data.get("referred_by_code")
-    current_page = data.get("country_page", 0)
 
     async with get_session() as session:
         country = await session.get(Country, country_id)
         if country is None:
             await callback.answer("این کشور پیدا نشد، دوباره امتحان کن.", show_alert=True)
-            return
-
-        # چک اول: قبل از هر کاری ببینیم آیا کسی دیگه همین الان این کشور رو گرفته
-        if await is_country_taken(session, country_id):
-            await callback.answer(
-                "😕 این کشور/گروهک همین الان توسط یکی دیگه گرفته شد! یکی دیگه رو انتخاب کن.",
-                show_alert=True,
-            )
-            await _send_country_picker(callback, state, page=current_page, edit=True)
             return
 
         referred_by_id = None
@@ -211,20 +170,7 @@ async def process_country(callback: CallbackQuery, state: FSMContext) -> None:
             referred_by_id=referred_by_id,
         )
         session.add(new_user)
-
-        # چک دوم (نگهبان نهایی برای شرایط رقابتی): تلاش برای flush و گرفتن خطای
-        # یکتایی از ایندکس دیتابیس، برای زمانی که دو نفر تقریباً همزمان یه
-        # کشور رو انتخاب کرده باشن و چک اول هر دوشون قبل از insert رد شده باشه.
-        try:
-            await session.flush()  # برای گرفتن new_user.id قبل از commit
-        except IntegrityError:
-            await session.rollback()
-            await callback.answer(
-                "😕 این کشور/گروهک همین الان توسط یکی دیگه گرفته شد! یکی دیگه رو انتخاب کن.",
-                show_alert=True,
-            )
-            await _send_country_picker(callback, state, page=current_page, edit=True)
-            return
+        await session.flush()  # برای گرفتن new_user.id قبل از commit
 
         # برای هر نوع ساختمان، یک ردیف با level=0 (هنوز ساخته نشده) می‌سازیم
         result = await session.execute(select(BuildingType))
@@ -250,26 +196,17 @@ async def process_country(callback: CallbackQuery, state: FSMContext) -> None:
                     UserInventory(user_id=new_user.id, item_type_id=it.id, quantity=starter_item_keys[it.key])
                 )
 
-        try:
-            await session.commit()
-        except IntegrityError:
-            await session.rollback()
-            await callback.answer(
-                "😕 این کشور/گروهک همین الان توسط یکی دیگه گرفته شد! یکی دیگه رو انتخاب کن.",
-                show_alert=True,
-            )
-            await _send_country_picker(callback, state, page=current_page, edit=True)
-            return
+        await session.commit()
 
     await state.clear()
     room_note = "" if callback.message.chat.type == "private" else "\n\n🏠 این پروفایل مخصوص همین گروهه."
     await callback.message.edit_text(
         f"✅ ثبت‌نام کامل شد!\n\n"
         f"👤 نیک‌نیم: {nickname}\n"
-        f"{country.flag_emoji} کشور/گروهک: {country.name_fa}\n"
+        f"{country.flag_emoji} کشور: {country.name_fa}\n"
         f"💰 طلای شروع: {settings.START_GOLD}"
         f"{room_note}\n\n"
         f"حالا می‌تونی وارد بازی بشی 👇"
     )
     await callback.message.answer("منوی اصلی:", reply_markup=main_menu_keyboard())
-    await callback.answer("✅ این کشور/گروهک برای تو ثبت شد!")
+    await callback.answer()
