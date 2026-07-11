@@ -135,6 +135,7 @@ def army_keyboard(user_units: list[UserUnit]) -> InlineKeyboardMarkup:
         )
     rows.append([InlineKeyboardButton(text="🔬 تحقیق و توسعه", callback_data="show_research")])
     rows.append([InlineKeyboardButton(text="🔄 بروزرسانی", callback_data="show_army")])
+    rows.append([InlineKeyboardButton(text="🔙 منوی اصلی", callback_data="show_main_menu")])
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
