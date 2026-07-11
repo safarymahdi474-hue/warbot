@@ -27,6 +27,7 @@ def shop_keyboard(items: list[ShopItem]) -> InlineKeyboardMarkup:
         ]
         for i in items
     ]
+    rows.append([InlineKeyboardButton(text="🔙 منوی اصلی", callback_data="show_main_menu")])
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
