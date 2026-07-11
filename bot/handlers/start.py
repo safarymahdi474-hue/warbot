@@ -57,6 +57,12 @@ def generate_referral_code() -> str:
     return "".join(secrets.choice(alphabet) for _ in range(6))
 
 
+async def _get_sorted_countries(session) -> list[Country]:
+    """ترتیب پایدار (بر اساس id) که شماره‌ی صفحه‌ها هر بار یکسان بمونه."""
+    result = await session.execute(select(Country).order_by(Country.id))
+    return list(result.scalars().all())
+
+
 # ---------------------------------------------------------------------------
 # بازگشت مشترک به منوی اصلی - از همه‌ی بخش‌های ربات صدا زده میشه
 # ---------------------------------------------------------------------------
@@ -117,15 +123,33 @@ async def process_nickname(message: Message, state: FSMContext) -> None:
     await state.update_data(nickname=nickname)
 
     async with get_session() as session:
-        result = await session.execute(select(Country))
-        countries = result.scalars().all()
+        countries = await _get_sorted_countries(session)
 
     await message.answer(
         "عالی! حالا کشور یا جناحت رو انتخاب کن 🌍\n"
         "(این انتخاب روی منابع و قدرت نظامی اولیه‌ات تاثیر داره)",
-        reply_markup=countries_keyboard(countries),
+        reply_markup=countries_keyboard(countries, page=0),
     )
     await state.set_state(Registration.waiting_for_country)
+
+
+@router.callback_query(Registration.waiting_for_country, F.data.startswith("countries_page:"))
+async def process_countries_page(callback: CallbackQuery) -> None:
+    page = int(callback.data.split(":")[1])
+
+    async with get_session() as session:
+        countries = await _get_sorted_countries(session)
+
+    try:
+        await callback.message.edit_reply_markup(reply_markup=countries_keyboard(countries, page=page))
+    except Exception:
+        pass
+    await callback.answer()
+
+
+@router.callback_query(Registration.waiting_for_country, F.data == "countries_noop")
+async def process_countries_noop(callback: CallbackQuery) -> None:
+    await callback.answer()
 
 
 @router.callback_query(Registration.waiting_for_country, F.data.startswith("pick_country:"))
