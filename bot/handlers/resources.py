@@ -1,6 +1,6 @@
 from aiogram import F, Router
 from aiogram.filters import Command
-from aiogram.types import CallbackQuery, Message
+from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 
@@ -17,6 +17,15 @@ def bar(current: int, maximum: int, length: int = 10) -> str:
         maximum = 1
     filled = round(length * min(current, maximum) / maximum)
     return "🟦" * filled + "⬜️" * (length - filled)
+
+
+def resources_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="🔄 بروزرسانی", callback_data="show_resources")],
+            [InlineKeyboardButton(text="🔙 منوی اصلی", callback_data="show_main_menu")],
+        ]
+    )
 
 
 def build_resources_text(user: User, gained: dict[str, int]) -> str:
@@ -64,11 +73,14 @@ async def _get_resources_text(telegram_id: int) -> str:
 @router.message(Command("resources"))
 async def cmd_resources(message: Message) -> None:
     text = await _get_resources_text(message.from_user.id)
-    await message.answer(text, parse_mode="HTML")
+    await message.answer(text, reply_markup=resources_keyboard(), parse_mode="HTML")
 
 
 @router.callback_query(F.data == "show_resources")
 async def cb_resources(callback: CallbackQuery) -> None:
     text = await _get_resources_text(callback.from_user.id)
-    await callback.message.answer(text, parse_mode="HTML")
+    try:
+        await callback.message.edit_text(text, reply_markup=resources_keyboard(), parse_mode="HTML")
+    except Exception:
+        await callback.message.answer(text, reply_markup=resources_keyboard(), parse_mode="HTML")
     await callback.answer()
