@@ -58,6 +58,7 @@ def market_menu_keyboard() -> InlineKeyboardMarkup:
             [InlineKeyboardButton(text="🔨 مرور حراج‌ها", callback_data="browse_auctions")],
             [InlineKeyboardButton(text="🔼 ایجاد حراج", callback_data="create_auction_start")],
             [InlineKeyboardButton(text="📋 آگهی‌های من", callback_data="my_listings")],
+            [InlineKeyboardButton(text="🔙 منوی اصلی", callback_data="show_main_menu")],
         ]
     )
 
