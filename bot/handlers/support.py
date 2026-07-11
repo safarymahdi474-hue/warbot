@@ -1,6 +1,6 @@
 from aiogram import F, Router
 from aiogram.filters import Command, CommandObject
-from aiogram.types import CallbackQuery, Message
+from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
 from sqlalchemy import select
 
 from bot.database.db import get_session
@@ -12,6 +12,15 @@ router = Router(name="support")
 MAX_TICKET_LENGTH = 1000
 
 
+def support_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="🔙 بازگشت به تنظیمات", callback_data="show_settings")],
+            [InlineKeyboardButton(text="🔙 منوی اصلی", callback_data="show_main_menu")],
+        ]
+    )
+
+
 @router.message(Command("support"))
 async def cmd_support(message: Message, command: CommandObject) -> None:
     text = (command.args or "").strip()
@@ -19,6 +28,7 @@ async def cmd_support(message: Message, command: CommandObject) -> None:
         await message.answer(
             "برای ثبت درخواست پشتیبانی بنویس:\n<code>/support متن مشکلت</code>\n\n"
             "برای دیدن تیکت‌های قبلی: /mytickets",
+            reply_markup=support_keyboard(),
             parse_mode="HTML",
         )
         return
@@ -35,13 +45,15 @@ async def cmd_support(message: Message, command: CommandObject) -> None:
         session.add(ticket)
         await session.commit()
 
-    await message.answer("✅ تیکتت ثبت شد. تیم پشتیبانی به زودی بررسی می‌کنه.")
+    await message.answer("✅ تیکتت ثبت شد. تیم پشتیبانی به زودی بررسی می‌کنه.", reply_markup=support_keyboard())
 
 
 @router.callback_query(F.data == "show_support")
 async def cb_show_support(callback: CallbackQuery) -> None:
     await callback.message.answer(
-        "🆘 برای ثبت درخواست پشتیبانی بنویس:\n<code>/support متن مشکلت</code>", parse_mode="HTML"
+        "🆘 برای ثبت درخواست پشتیبانی بنویس:\n<code>/support متن مشکلت</code>",
+        reply_markup=support_keyboard(),
+        parse_mode="HTML",
     )
     await callback.answer()
 
@@ -64,7 +76,7 @@ async def cmd_my_tickets(message: Message) -> None:
         tickets = list(result.scalars().all())
 
     if not tickets:
-        await message.answer("هیچ تیکتی ثبت نکردی.")
+        await message.answer("هیچ تیکتی ثبت نکردی.", reply_markup=support_keyboard())
         return
 
     lines = ["🎫 <b>تیکت‌های اخیر تو</b>\n"]
@@ -73,4 +85,4 @@ async def cmd_my_tickets(message: Message) -> None:
         lines.append(f"{status_icon}\n📝 {t.message}")
         if t.admin_reply:
             lines.append(f"💬 <b>پاسخ پشتیبانی:</b> {t.admin_reply}")
-    await message.answer("\n\n".join(lines), parse_mode="HTML")
+    await message.answer("\n\n".join(lines), reply_markup=support_keyboard(), parse_mode="HTML")
