@@ -26,6 +26,7 @@ def inventory_keyboard(items: list[UserInventory]) -> InlineKeyboardMarkup:
         )
     rows.append([InlineKeyboardButton(text="🛒 فروش در بازار", callback_data="sell_from_inventory")])
     rows.append([InlineKeyboardButton(text="🔄 بروزرسانی", callback_data="show_inventory")])
+    rows.append([InlineKeyboardButton(text="🔙 منوی اصلی", callback_data="show_main_menu")])
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
