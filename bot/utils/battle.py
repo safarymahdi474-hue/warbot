@@ -22,6 +22,10 @@ BOT_DIFFICULTIES = {
     "boss": {"label": "☠️ باس فصلی", "power_mult": 3.2, "gold_reward": 3000, "xp_reward": 600},
 }
 
+# احتمال رویدادهای تصادفی در نبرد با ربات (روی یک رول واحد چک میشن، نه دو رول جدا)
+AMBUSH_CHANCE = 0.12   # کمین: قدرت دشمن ۱۵٪ کمتر محاسبه میشه
+CRITICAL_CHANCE = 0.10  # ضربه بحرانی: قدرت خودت ۱۵٪ بیشتر محاسبه میشه
+
 
 async def load_combat_units_and_research(
     session: AsyncSession, user_id: int
@@ -93,6 +97,17 @@ async def resolve_bot_battle(session: AsyncSession, attacker: User, difficulty: 
     attacker_power = compute_power(attacker_units, attacker_research, country_bonus, "attack", attack_boost)
 
     npc_power = int(max(attacker_power, 100) * diff["power_mult"] * random.uniform(0.85, 1.15))
+
+    # رویداد تصادفی نبرد - روی یک رول واحد تا احتمالات هم‌پوشانی نداشته باشن
+    random_event = None
+    event_roll = random.random()
+    if event_roll < AMBUSH_CHANCE:
+        random_event = "ambush"
+        npc_power = int(npc_power * 0.85)
+    elif event_roll < AMBUSH_CHANCE + CRITICAL_CHANCE:
+        random_event = "critical"
+        attacker_power = int(attacker_power * 1.15)
+
     roll_attacker = attacker_power * random.uniform(0.9, 1.1)
     roll_npc = npc_power * random.uniform(0.9, 1.1)
 
@@ -132,6 +147,7 @@ async def resolve_bot_battle(session: AsyncSession, attacker: User, difficulty: 
     )
     session.add(report)
     report._leveled_up = leveled_up  # type: ignore[attr-defined]  # فقط برای نمایش پیام، در دیتابیس ذخیره نمیشه
+    report._random_event = random_event  # type: ignore[attr-defined]  # فقط برای نمایش پیام، در دیتابیس ذخیره نمیشه
     return report
 
 
