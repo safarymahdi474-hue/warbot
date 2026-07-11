@@ -6,9 +6,11 @@ from sqlalchemy import (
     DateTime,
     Float,
     ForeignKey,
+    Index,
     Integer,
     String,
     UniqueConstraint,
+    text,
 )
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
@@ -21,6 +23,9 @@ class Country(Base):
     """
     کشور/جناح قابل انتخاب. لیست اولیه رو در db.py سید می‌کنیم.
     فازهای بعدی: هر کشور می‌تونه بونوس منابع/نظامی خاص خودش رو داشته باشه.
+    نکته: هر کشور/گروهک فقط توسط یک کاربر در هر «روم» (فضای بازی) قابل انتخابه —
+    این محدودیت با یک ایندکس یکتای جزئی روی User (country_id, room_id) اعمال میشه،
+    نه اینجا، چون منطقش مال جدول User هست.
     """
     __tablename__ = "countries"
 
@@ -40,7 +45,20 @@ class User(Base):
     اتحاد، اینونتوری و ...) در فازهای بعدی به این جدول وصل می‌شن.
     """
     __tablename__ = "users"
-    __table_args__ = (UniqueConstraint("telegram_id", "room_id", name="uq_users_telegram_room"),)
+    __table_args__ = (
+        UniqueConstraint("telegram_id", "room_id", name="uq_users_telegram_room"),
+        # هر کشور/گروهک فقط توسط یک کاربر در هر روم قابل انتخابه. ایندکس جزئیه
+        # (فقط وقتی country_id خالی نیست اعمال میشه) تا کاربرهایی که هنوز کشور
+        # انتخاب نکردن (NULL) با هم تداخل نداشته باشن. هم روی SQLite هم Postgres کار می‌کنه.
+        Index(
+            "uq_users_country_per_room",
+            "country_id",
+            "room_id",
+            unique=True,
+            sqlite_where=text("country_id IS NOT NULL"),
+            postgresql_where=text("country_id IS NOT NULL"),
+        ),
+    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     telegram_id: Mapped[int] = mapped_column(BigInteger, index=True, nullable=False)
