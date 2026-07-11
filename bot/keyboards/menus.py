@@ -39,6 +39,7 @@ def main_menu_keyboard() -> InlineKeyboardMarkup:
                 InlineKeyboardButton(text="🎁 جوایز", callback_data="show_rewards_menu"),
             ],
             [InlineKeyboardButton(text="🏛️ اتحاد", callback_data="show_alliance_menu")],
+            [InlineKeyboardButton(text="📜 بیانیه ملی", callback_data="show_statement_menu")],
             [
                 InlineKeyboardButton(text="🎒 اینونتوری", callback_data="show_inventory"),
                 InlineKeyboardButton(text="🏪 بازار", callback_data="show_market_menu"),
