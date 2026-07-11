@@ -17,7 +17,7 @@ from bot.database.models import (
 engine = create_async_engine(settings.DATABASE_URL, echo=False)
 async_session = async_sessionmaker(engine, expire_on_commit=False)
 
-# لیست اولیه کشورها/جناح‌ها - می‌تونی بعدا از پنل ادمین اضافه/ویرایش کنی
+# لیست کشورها/جناح‌ها - حدود ۱۵۰ کشور واقعی + چندتا جناح تخیلی/تاریخی
 DEFAULT_COUNTRIES = [
     # --- خاورمیانه و آسیای غربی ---
     {"name_fa": "ایران", "flag_emoji": "🇮🇷", "resource_bonus_percent": 5, "military_bonus_percent": 6},
@@ -611,9 +611,17 @@ async def init_db() -> None:
 
     async with async_session() as session:
         result = await session.execute(select(Country))
-        if result.scalars().first() is None:
+        existing_countries = list(result.scalars().all())
+        if not existing_countries:
             for c in DEFAULT_COUNTRIES:
                 session.add(Country(**c))
+        else:
+            # اگه قبلاً یه لیست کوچیک‌تر سید شده، کشورهای جدید (بر اساس اسم) رو اضافه می‌کنیم
+            # بدون اینکه به کشورهای موجود (و کاربرهایی که انتخابشون کردن) دست بزنیم.
+            existing_names = {c.name_fa for c in existing_countries}
+            for c in DEFAULT_COUNTRIES:
+                if c["name_fa"] not in existing_names:
+                    session.add(Country(**c))
 
         result = await session.execute(select(BuildingType))
         if result.scalars().first() is None:
