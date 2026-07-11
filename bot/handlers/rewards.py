@@ -38,6 +38,7 @@ def rewards_menu_keyboard() -> InlineKeyboardMarkup:
             [InlineKeyboardButton(text="🕊️ هدیه آنلاین", callback_data="claim_online_gift")],
             [InlineKeyboardButton(text="🎡 گردونه شانس", callback_data="spin_wheel")],
             [InlineKeyboardButton(text="🎯 ماموریت‌ها", callback_data="show_missions")],
+            [InlineKeyboardButton(text="🔙 منوی اصلی", callback_data="show_main_menu")],
         ]
     )
 
