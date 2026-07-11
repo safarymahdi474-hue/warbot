@@ -42,6 +42,7 @@ def alliance_menu_keyboard(in_alliance: bool, is_leader: bool) -> InlineKeyboard
     else:
         rows.append([InlineKeyboardButton(text="🆕 ساخت اتحاد", callback_data="create_alliance_start")])
         rows.append([InlineKeyboardButton(text="🔍 لیست اتحادها", callback_data="list_alliances")])
+    rows.append([InlineKeyboardButton(text="🔙 منوی اصلی", callback_data="show_main_menu")])
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
