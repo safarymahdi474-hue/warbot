@@ -15,6 +15,9 @@ from bot.utils.progression import regen_energy
 
 router = Router(name="battle")
 
+# لول لازم برای باز شدن سختی‌های بالاتر نبرد با ربات
+BOT_DIFFICULTY_MIN_LEVEL = {"elite": 10, "boss": 18}
+
 
 # ---------------------------------------------------------------------------
 # منوی اصلی حمله
@@ -48,20 +51,33 @@ async def cb_attack_menu(callback: CallbackQuery) -> None:
 # نبرد با ربات (NPC)
 # ---------------------------------------------------------------------------
 
-def bot_difficulty_keyboard() -> InlineKeyboardMarkup:
-    rows = [
-        [InlineKeyboardButton(text=d["label"], callback_data=f"attack_bot:{key}")]
-        for key, d in BOT_DIFFICULTIES.items()
-    ]
+def bot_difficulty_keyboard(user_level: int | None = None) -> InlineKeyboardMarkup:
+    """
+    اگه user_level داده بشه، سختی‌های elite/boss که به لول کافی نرسیده باشن
+    قفل نشون داده میشن (دکمه‌شون فقط یه پیام «قفله» میده، callback واقعی نداره).
+    """
+    rows = []
+    for key, d in BOT_DIFFICULTIES.items():
+        required_level = BOT_DIFFICULTY_MIN_LEVEL.get(key, 1)
+        if user_level is not None and user_level < required_level:
+            label = f"🔒 {d['label']} (لول {required_level}+)"
+            rows.append([InlineKeyboardButton(text=label, callback_data="building_max")])
+        else:
+            rows.append([InlineKeyboardButton(text=d["label"], callback_data=f"attack_bot:{key}")])
     rows.append([InlineKeyboardButton(text="🔙 بازگشت", callback_data="show_attack_menu")])
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
 @router.callback_query(F.data == "attack_bot_menu")
 async def cb_attack_bot_menu(callback: CallbackQuery) -> None:
+    async with get_session() as session:
+        result = await session.execute(select(User).where(*user_scope(callback.from_user.id)))
+        user = result.scalar_one_or_none()
+        user_level = user.level if user else 1
+
     await callback.message.edit_text(
         "🤖 سختی نبرد رو انتخاب کن (هرچی سخت‌تر، پاداش بیشتر ولی ریسک بیشتر):",
-        reply_markup=bot_difficulty_keyboard(),
+        reply_markup=bot_difficulty_keyboard(user_level),
     )
     await callback.answer()
 
@@ -71,7 +87,9 @@ async def cb_attack_bot(callback: CallbackQuery) -> None:
     difficulty = callback.data.split(":")[1]
 
     async with get_session() as session:
-        result = await session.execute(select(User).where(*user_scope(callback.from_user.id)))
+        result = await session.execute(
+            select(User).options(selectinload(User.country)).where(*user_scope(callback.from_user.id))
+        )
         attacker = result.scalar_one_or_none()
         if attacker is None:
             await callback.answer("هنوز ثبت‌نام نکردی!", show_alert=True)
@@ -84,48 +102,38 @@ async def cb_attack_bot(callback: CallbackQuery) -> None:
             await session.commit()
             return
 
+        # سطح لازم برای این سختی رو دوباره چک می‌کنیم (جلوی دورزدن قفل با callback دستی)
+        required_level = BOT_DIFFICULTY_MIN_LEVEL.get(difficulty, 1)
+        if attacker.level < required_level:
+            await callback.answer(f"این سختی برای لول {required_level}+ بازه.", show_alert=True)
+            return
+
         report = await resolve_bot_battle(session, attacker, difficulty)
         leveled_up = getattr(report, "_leveled_up", [])
+        random_event = getattr(report, "_random_event", None)
         await record_progress(session, attacker, "bot_battle", 1)
         if report.winner == "attacker":
             await record_progress(session, attacker, "battle_win", 1)
+        user_level = attacker.level
         await session.commit()
 
-        text = build_bot_report_text(report, leveled_up)
+        text = build_bot_report_text(report, leveled_up, random_event)
 
-    await callback.message.edit_text(text, reply_markup=bot_difficulty_keyboard(), parse_mode="HTML")
+    await callback.message.edit_text(text, reply_markup=bot_difficulty_keyboard(user_level), parse_mode="HTML")
     await callback.answer()
 
-result = await session.execute(
-    select(User).options(selectinload(User.country)).where(*user_scope(callback.from_user.id))
-)
-attacker = result.scalar_one_or_none()
-async def cb_attack_bot_menu(callback: CallbackQuery) -> None:
-    async with get_session() as session:
-        result = await session.execute(select(User).where(*user_scope(callback.from_user.id)))
-        user = result.scalar_one_or_none()
-        user_level = user.level if user else 1
 
-    rows = []
-    min_level = {"elite": 10, "boss": 18}
-    for key, d in BOT_DIFFICULTIES.items():
-        if user_level < min_level.get(key, 1):
-            rows.append([InlineKeyboardButton(text=f"🔒 {d['label']} (لول {min_level[key]}+)", callback_data="building_max")])
-        else:
-            rows.append([InlineKeyboardButton(text=d["label"], callback_data=f"attack_bot:{key}")])
-    rows.append([InlineKeyboardButton(text="🔙 بازگشت", callback_data="show_attack_menu")])
-
-    await callback.message.edit_text(
-        "🤖 سختی نبرد رو انتخاب کن (هرچی سخت‌تر، پاداش بیشتر ولی ریسک بیشتر):",
-        reply_markup=InlineKeyboardMarkup(inline_keyboard=rows),
-    )
-    await callback.answer()
-
-def build_bot_report_text(report: BattleReport, leveled_up: list[int]) -> str:
+def build_bot_report_text(report: BattleReport, leveled_up: list[int], random_event: str | None = None) -> str:
     won = report.winner == "attacker"
     header = "🎉 <b>پیروز شدی!</b>" if won else "💥 <b>شکست خوردی!</b>"
-    lines = [
-        header,
+    lines = [header]
+
+    if random_event == "ambush":
+        lines.append("🌫️ <i>کمین!</i> قدرت دشمن غافلگیر شد و ۱۵٪ افت کرد.")
+    elif random_event == "critical":
+        lines.append("💥 <i>ضربه بحرانی!</i> قدرت حمله‌ات ۱۵٪ اضافه شد.")
+
+    lines += [
         f"⚔️ قدرت تو: {report.attacker_power} | 🤖 قدرت ربات: {report.defender_power}",
         f"❤️ HP از دست رفته: {report.attacker_hp_lost}",
         f"💀 نیروی از دست رفته: {report.attacker_units_lost}",
@@ -204,7 +212,9 @@ async def cb_attack_pvp(callback: CallbackQuery) -> None:
     defender_id = int(callback.data.split(":")[1])
 
     async with get_session() as session:
-        result = await session.execute(select(User).where(*user_scope(callback.from_user.id)))
+        result = await session.execute(
+            select(User).options(selectinload(User.country)).where(*user_scope(callback.from_user.id))
+        )
         attacker = result.scalar_one_or_none()
         if attacker is None:
             await callback.answer("هنوز ثبت‌نام نکردی!", show_alert=True)
@@ -217,7 +227,7 @@ async def cb_attack_pvp(callback: CallbackQuery) -> None:
             await session.commit()
             return
 
-        defender = await session.get(User, defender_id)
+        defender = await session.get(User, defender_id, options=[selectinload(User.country)])
         if defender is None:
             await callback.answer("این بازیکن دیگه در دسترس نیست.", show_alert=True)
             return
@@ -266,13 +276,6 @@ async def cb_attack_pvp(callback: CallbackQuery) -> None:
 
     await callback.message.edit_text(text, reply_markup=attack_menu_keyboard(), parse_mode="HTML")
     await callback.answer()
-
-result = await session.execute(
-    select(User).options(selectinload(User.country)).where(*user_scope(callback.from_user.id))
-)
-attacker = result.scalar_one_or_none()
-...
-defender = await session.get(User, defender_id, options=[selectinload(User.country)])
 
 
 def build_pvp_report_text(report: BattleReport, defender_nickname: str, leveled_up: list[int]) -> str:
