@@ -36,6 +36,7 @@ def achievements_keyboard(pairs) -> InlineKeyboardMarkup:
                 [InlineKeyboardButton(text=f"🎁 دریافت «{at.name_fa}»", callback_data=f"claim_achievement:{at.id}")]
             )
     rows.append([InlineKeyboardButton(text="🔄 بروزرسانی", callback_data="show_achievements")])
+    rows.append([InlineKeyboardButton(text="🔙 منوی اصلی", callback_data="show_main_menu")])
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
@@ -97,10 +98,19 @@ async def cb_claim_achievement(callback: CallbackQuery) -> None:
 # جدول رتبه‌بندی
 # ---------------------------------------------------------------------------
 
+def leaderboard_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="🔄 بروزرسانی", callback_data="show_leaderboard")],
+            [InlineKeyboardButton(text="🔙 منوی اصلی", callback_data="show_main_menu")],
+        ]
+    )
+
+
 @router.message(Command("leaderboard"))
 async def cmd_leaderboard(message: Message) -> None:
     text = await _leaderboard_text()
-    await message.answer(text, parse_mode="HTML")
+    await message.answer(text, reply_markup=leaderboard_keyboard(), parse_mode="HTML")
 
 
 @router.callback_query(F.data == "show_leaderboard")
@@ -108,9 +118,7 @@ async def cb_leaderboard(callback: CallbackQuery) -> None:
     text = await _leaderboard_text()
     await callback.message.edit_text(
         text,
-        reply_markup=InlineKeyboardMarkup(
-            inline_keyboard=[[InlineKeyboardButton(text="🔄 بروزرسانی", callback_data="show_leaderboard")]]
-        ),
+        reply_markup=leaderboard_keyboard(),
         parse_mode="HTML",
     )
     await callback.answer()
