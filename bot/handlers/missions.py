@@ -44,6 +44,7 @@ def missions_keyboard(pairs: list[tuple[MissionType, UserMissionProgress]]) -> I
                 [InlineKeyboardButton(text=f"🎁 دریافت پاداش «{mt.name_fa}»", callback_data=f"claim_mission:{mt.id}")]
             )
     rows.append([InlineKeyboardButton(text="🔄 بروزرسانی", callback_data="show_missions")])
+    rows.append([InlineKeyboardButton(text="🔙 منوی اصلی", callback_data="show_main_menu")])
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
