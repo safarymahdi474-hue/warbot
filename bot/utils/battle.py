@@ -234,6 +234,8 @@ async def resolve_bot_battle(
 async def resolve_pvp_battle(
     session: AsyncSession, attacker: User, defender: User, strategy_key: str = "balanced"
 ) -> BattleReport:
+    strategy = get_strategy(strategy_key)
+
     attacker_units, attacker_research = await load_combat_units_and_research(session, attacker.id)
     defender_units, defender_research = await load_combat_units_and_research(session, defender.id)
 
@@ -246,10 +248,11 @@ async def resolve_pvp_battle(
     attacker_power = compute_power(
         attacker_units, attacker_research, attacker_country_bonus, "attack", attacker_attack_boost
     )
+    attacker_power = int(attacker_power * strategy["power_mult"])
     defender_power = compute_power(
         defender_units, defender_research, defender_country_bonus, "defense", defender_defense_boost
     )
-report._event = event  # type: ignore[attr-defined]
+
     event = roll_battle_event()
     if event["side"] in ("attacker", "both"):
         attacker_power = int(attacker_power * event["power_mult"])
@@ -263,13 +266,13 @@ report._event = event  # type: ignore[attr-defined]
     attacker_won = roll_attacker >= roll_defender
 
     if attacker_won:
-        attacker_hp_loss = int(attacker.max_hp * settings.WINNER_HP_LOSS_PERCENT / 100)
+        attacker_hp_loss = int(attacker.max_hp * settings.WINNER_HP_LOSS_PERCENT / 100 * strategy["own_hp_loss_mult"])
         defender_hp_loss = int(defender.max_hp * settings.LOSER_HP_LOSS_PERCENT / 100)
         attacker_unit_loss_pct = settings.WINNER_UNIT_LOSS_PERCENT
-        defender_unit_loss_pct = settings.LOSER_UNIT_LOSS_PERCENT
+        defender_unit_loss_pct = min(settings.LOSER_UNIT_LOSS_PERCENT * strategy["enemy_unit_loss_mult"], 0.9)
         xp_reward = 60 + defender.level * 5
     else:
-        attacker_hp_loss = int(attacker.max_hp * settings.LOSER_HP_LOSS_PERCENT / 100)
+        attacker_hp_loss = int(attacker.max_hp * settings.LOSER_HP_LOSS_PERCENT / 100 * strategy["own_hp_loss_mult"])
         defender_hp_loss = int(defender.max_hp * settings.WINNER_HP_LOSS_PERCENT / 100)
         attacker_unit_loss_pct = settings.LOSER_UNIT_LOSS_PERCENT
         defender_unit_loss_pct = settings.WINNER_UNIT_LOSS_PERCENT
@@ -288,7 +291,7 @@ report._event = event  # type: ignore[attr-defined]
 
     loot = {"gold": 0, "iron": 0, "oil": 0, "food": 0}
     if attacker_won:
-        pct = settings.PVP_LOOT_PERCENT / 100
+        pct = (settings.PVP_LOOT_PERCENT / 100) * strategy["loot_mult"]
         for field in loot:
             available = getattr(defender, field)
             amount = int(available * pct)
@@ -316,4 +319,5 @@ report._event = event  # type: ignore[attr-defined]
     )
     session.add(report)
     report._leveled_up = leveled_up  # type: ignore[attr-defined]
+    report._event = event  # type: ignore[attr-defined]
     return report
