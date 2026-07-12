@@ -94,12 +94,10 @@ async def cb_attack_bot_strategy(callback: CallbackQuery) -> None:
 
 @router.callback_query(F.data.startswith("attack_bot:"))
 async def cb_attack_bot(callback: CallbackQuery) -> None:
-    difficulty = callback.data.split(":")[1]
+    _, difficulty, strategy_key = callback.data.split(":")
 
     async with get_session() as session:
-        result = await session.execute(
-            select(User).options(selectinload(User.country)).where(*user_scope(callback.from_user.id))
-        )
+        result = await session.execute(select(User).where(*user_scope(callback.from_user.id)))
         attacker = result.scalar_one_or_none()
         if attacker is None:
             await callback.answer("هنوز ثبت‌نام نکردی!", show_alert=True)
@@ -112,26 +110,19 @@ async def cb_attack_bot(callback: CallbackQuery) -> None:
             await session.commit()
             return
 
-        # سطح لازم برای این سختی رو دوباره چک می‌کنیم (جلوی دورزدن قفل با callback دستی)
-        required_level = BOT_DIFFICULTY_MIN_LEVEL.get(difficulty, 1)
-        if attacker.level < required_level:
-            await callback.answer(f"این سختی برای لول {required_level}+ بازه.", show_alert=True)
-            return
-
-        report = await resolve_bot_battle(session, attacker, difficulty)
+        report = await resolve_bot_battle(session, attacker, difficulty, strategy_key)
         leveled_up = getattr(report, "_leveled_up", [])
-        random_event = getattr(report, "_random_event", None)
         await record_progress(session, attacker, "bot_battle", 1)
         if report.winner == "attacker":
             await record_progress(session, attacker, "battle_win", 1)
-        user_level = attacker.level
         await session.commit()
 
-        text = build_bot_report_text(report, leveled_up, random_event)
+        text = build_bot_report_text(report, leveled_up)
 
-    await callback.message.edit_text(text, reply_markup=bot_difficulty_keyboard(user_level), parse_mode="HTML")
+    await callback.message.edit_text(
+        text, reply_markup=bot_difficulty_keyboard(strategy_key), parse_mode="HTML"
+    )
     await callback.answer()
-
 
 def build_bot_report_text(report: BattleReport, leveled_up: list[int], random_event: str | None = None) -> str:
     won = report.winner == "attacker"
