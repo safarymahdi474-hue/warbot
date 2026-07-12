@@ -9,15 +9,17 @@ from bot.database.db import get_session
 from bot.utils.context import current_room, room_condition, user_scope
 from bot.database.models import BannedTelegramUser, BattleReport, User
 from bot.utils.alliance import add_war_score, get_active_war_between
-from bot.utils.battle import BOT_DIFFICULTIES, can_attack, resolve_bot_battle, resolve_pvp_battle
+from bot.utils.battle import (
+    ATTACK_STRATEGIES,
+    BOT_DIFFICULTIES,
+    can_attack,
+    resolve_bot_battle,
+    resolve_pvp_battle,
+)
 from bot.utils.missions import record_progress
 from bot.utils.progression import regen_energy
-from bot.utils.battle import ATTACK_STRATEGIES, BOT_DIFFICULTIES, can_attack, resolve_bot_battle, resolve_pvp_battle
 
 router = Router(name="battle")
-
-# لول لازم برای باز شدن سختی‌های بالاتر نبرد با ربات
-BOT_DIFFICULTY_MIN_LEVEL = {"elite": 10, "boss": 18}
 
 
 # ---------------------------------------------------------------------------
@@ -49,8 +51,9 @@ async def cb_attack_menu(callback: CallbackQuery) -> None:
 
 
 # ---------------------------------------------------------------------------
-# نبرد با ربات (NPC)
+# انتخاب استراتژی حمله (مشترک بین نبرد با ربات و PvP)
 # ---------------------------------------------------------------------------
+
 def strategy_keyboard(next_prefix: str) -> InlineKeyboardMarkup:
     """next_prefix مثلا 'attack_bot_strategy' یا 'attack_pvp_strategy'."""
     rows = [
@@ -66,7 +69,12 @@ def strategy_intro_text() -> str:
     for s in ATTACK_STRATEGIES.values():
         lines.append(f"{s['label']}\n   {s['desc']}")
     return "\n\n".join(lines)
-    
+
+
+# ---------------------------------------------------------------------------
+# نبرد با ربات (NPC)
+# ---------------------------------------------------------------------------
+
 def bot_difficulty_keyboard(strategy_key: str) -> InlineKeyboardMarkup:
     rows = [
         [InlineKeyboardButton(text=d["label"], callback_data=f"attack_bot:{key}:{strategy_key}")]
@@ -74,6 +82,7 @@ def bot_difficulty_keyboard(strategy_key: str) -> InlineKeyboardMarkup:
     ]
     rows.append([InlineKeyboardButton(text="🔙 بازگشت", callback_data="attack_bot_menu")])
     return InlineKeyboardMarkup(inline_keyboard=rows)
+
 
 @router.callback_query(F.data == "attack_bot_menu")
 async def cb_attack_bot_menu(callback: CallbackQuery) -> None:
@@ -87,7 +96,8 @@ async def cb_attack_bot_menu(callback: CallbackQuery) -> None:
 async def cb_attack_bot_strategy(callback: CallbackQuery) -> None:
     strategy_key = callback.data.split(":")[1]
     await callback.message.edit_text(
-        "🤖 سختی نبرد رو انتخاب کن:", reply_markup=bot_difficulty_keyboard(strategy_key)
+        "🤖 سختی نبرد رو انتخاب کن (هرچی سخت‌تر، پاداش بیشتر ولی ریسک بیشتر):",
+        reply_markup=bot_difficulty_keyboard(strategy_key),
     )
     await callback.answer()
 
@@ -119,10 +129,9 @@ async def cb_attack_bot(callback: CallbackQuery) -> None:
 
         text = build_bot_report_text(report, leveled_up)
 
-    await callback.message.edit_text(
-        text, reply_markup=bot_difficulty_keyboard(strategy_key), parse_mode="HTML"
-    )
+    await callback.message.edit_text(text, reply_markup=bot_difficulty_keyboard(strategy_key), parse_mode="HTML")
     await callback.answer()
+
 
 def build_bot_report_text(report: BattleReport, leveled_up: list[int]) -> str:
     won = report.winner == "attacker"
@@ -144,6 +153,7 @@ def build_bot_report_text(report: BattleReport, leveled_up: list[int]) -> str:
         lines.append(f"\n🎊 لول‌آپ کردی! سطح جدید: {leveled_up[-1]}")
     return "\n".join(lines)
 
+
 # ---------------------------------------------------------------------------
 # نبرد PvP
 # ---------------------------------------------------------------------------
@@ -156,7 +166,7 @@ async def _find_pvp_targets(session, attacker: User) -> list[User]:
         select(User)
         .where(
             User.id != attacker.id,
-            room_condition(User.room_id),  # فقط هم‌گروهی‌های همین روم (یا هم‌بازی‌های پروفایل اصلی)
+            room_condition(User.room_id),
             User.level.between(low, high),
             User.telegram_id.not_in(banned_subquery),
         )
@@ -215,6 +225,7 @@ async def cb_attack_pvp_strategy(callback: CallbackQuery) -> None:
     )
     await callback.answer()
 
+
 @router.callback_query(F.data.startswith("attack_pvp:"))
 async def cb_attack_pvp(callback: CallbackQuery) -> None:
     _, defender_id_str, strategy_key = callback.data.split(":")
@@ -249,6 +260,7 @@ async def cb_attack_pvp(callback: CallbackQuery) -> None:
         if report.winner == "attacker":
             await record_progress(session, attacker, "battle_win", 1)
 
+        # اگه هر دو عضو اتحادن و اتحادهاشون در جنگن، امتیاز جنگ به برنده اضافه میشه
         war_note = ""
         if attacker.alliance_id and defender.alliance_id and attacker.alliance_id != defender.alliance_id:
             war = await get_active_war_between(session, attacker.alliance_id, defender.alliance_id)
@@ -318,6 +330,8 @@ def build_pvp_report_text(report: BattleReport, defender_nickname: str, leveled_
     if leveled_up:
         lines.append(f"\n🎊 لول‌آپ کردی! سطح جدید: {leveled_up[-1]}")
     return "\n".join(lines)
+
+
 # ---------------------------------------------------------------------------
 # گزارش‌های اخیر
 # ---------------------------------------------------------------------------
