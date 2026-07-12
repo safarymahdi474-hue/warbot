@@ -11,6 +11,7 @@ from sqlalchemy import select
 from bot.config import settings
 from bot.database.db import get_session
 from bot.utils.context import current_room, user_scope
+from bot.utils.countries import get_taken_country_ids, is_country_taken
 from bot.database.models import (
     BuildingType,
     Country,
@@ -63,6 +64,13 @@ async def _get_sorted_countries(session) -> list[Country]:
     """ترتیب پایدار (بر اساس id) که شماره‌ی صفحه‌ها هر بار یکسان بمونه."""
     result = await session.execute(select(Country).order_by(Country.id))
     return list(result.scalars().all())
+
+
+async def _build_countries_view(session, page: int):
+    """کشورها + آیدی کشورهای گرفته‌شده‌ی همین روم رو با هم برمی‌گردونه."""
+    countries = await _get_sorted_countries(session)
+    taken_ids = await get_taken_country_ids(session)
+    return countries_keyboard(countries, page=page, taken_country_ids=taken_ids)
 
 
 def _nickname_intro_text(chat_type: str) -> str:
@@ -162,12 +170,13 @@ async def process_nickname(message: Message, state: FSMContext) -> None:
     await state.update_data(nickname=nickname)
 
     async with get_session() as session:
-        countries = await _get_sorted_countries(session)
+        keyboard = await _build_countries_view(session, page=0)
 
     await message.answer(
         "عالی! حالا کشور یا جناحت رو انتخاب کن 🌍\n"
-        "(این انتخاب روی منابع و قدرت نظامی اولیه‌ات تاثیر داره)",
-        reply_markup=countries_keyboard(countries, page=0),
+        "(این انتخاب روی منابع و قدرت نظامی اولیه‌ات تاثیر داره)\n"
+        "کشورهایی که ✅ کنارشونه قبلاً توسط یه بازیکن دیگه انتخاب شدن.",
+        reply_markup=keyboard,
     )
     await state.set_state(Registration.waiting_for_country)
 
@@ -177,10 +186,10 @@ async def process_countries_page(callback: CallbackQuery) -> None:
     page = int(callback.data.split(":")[1])
 
     async with get_session() as session:
-        countries = await _get_sorted_countries(session)
+        keyboard = await _build_countries_view(session, page=page)
 
     try:
-        await callback.message.edit_reply_markup(reply_markup=countries_keyboard(countries, page=page))
+        await callback.message.edit_reply_markup(reply_markup=keyboard)
     except Exception:
         pass
     await callback.answer()
@@ -189,6 +198,11 @@ async def process_countries_page(callback: CallbackQuery) -> None:
 @router.callback_query(Registration.waiting_for_country, F.data == "countries_noop")
 async def process_countries_noop(callback: CallbackQuery) -> None:
     await callback.answer()
+
+
+@router.callback_query(Registration.waiting_for_country, F.data == "country_taken")
+async def process_country_taken(callback: CallbackQuery) -> None:
+    await callback.answer("این کشور قبلاً توسط یه بازیکن دیگه انتخاب شده. یکی دیگه رو انتخاب کن.", show_alert=True)
 
 
 @router.callback_query(Registration.waiting_for_country, F.data.startswith("pick_country:"))
@@ -202,6 +216,20 @@ async def process_country(callback: CallbackQuery, state: FSMContext) -> None:
         country = await session.get(Country, country_id)
         if country is None:
             await callback.answer("این کشور پیدا نشد، دوباره امتحان کن.", show_alert=True)
+            return
+
+        # چک نهایی سمت سرور - جلوگیری از race condition (دو نفر همزمان یه
+        # کشور رو بزنن قبل از اینکه کیبوردشون بروزرسانی بشه)
+        if await is_country_taken(session, country_id):
+            await callback.answer(
+                "متاسفانه همین الان یه بازیکن دیگه این کشور رو گرفت! یکی دیگه رو انتخاب کن.",
+                show_alert=True,
+            )
+            keyboard = await _build_countries_view(session, page=0)
+            try:
+                await callback.message.edit_reply_markup(reply_markup=keyboard)
+            except Exception:
+                pass
             return
 
         referred_by_id = None
@@ -233,6 +261,10 @@ async def process_country(callback: CallbackQuery, state: FSMContext) -> None:
             referred_by_id=referred_by_id,
         )
         session.add(new_user)
+
+        # flush زودهنگام برای اینکه اگه دو نفر همزمان به اینجا رسیدن، هر کی
+        # دیرتر commit کنه با محدودیت یکتایی telegram_id+room_id رد نشه -
+        # این خودش کشور رو قفل نمی‌کنه، ولی چک بالا شانس تصادم رو خیلی کم می‌کنه.
         await session.flush()  # برای گرفتن new_user.id قبل از commit
 
         # برای هر نوع ساختمان، یک ردیف با level=0 (هنوز ساخته نشده) می‌سازیم
