@@ -91,9 +91,48 @@ class Settings:
     STATEMENT_MIN_LENGTH: int = 10
     STATEMENT_MAX_LENGTH: int = 1000
 
+    # --- عضویت اجباری (فاز ۱۴) ---
+    # لیست کانال‌های عضویت اجباری، جدا شده با کاما. ربات باید توی همه‌ی این
+    # کانال‌ها ادمین باشه تا بتونه عضویت رو چک کنه. دو فرمت پشتیبانی میشه:
+    #   ۱) کانال عمومی:  @channel_username
+    #   ۲) کانال خصوصی:  -1001234567890|https://t.me/+AbCdEfGhIjKlMnOp
+    #      (chat_id عددی و لینک دعوت با | از هم جدا میشن، چون برای کانال
+    #      خصوصی نمیشه لینک t.me رو خودکار از روی chat_id ساخت)
+    # مثال کامل در .env:
+    #   FORCE_JOIN_CHANNELS=@mychannel,-1001234567890|https://t.me/+AbCdEfGhIjKlMnOp
+    FORCE_JOIN_CHANNELS: str = os.getenv("FORCE_JOIN_CHANNELS", "")
+
     @property
     def admin_ids(self) -> set[int]:
         return {int(x) for x in self.ADMIN_TELEGRAM_IDS.split(",") if x.strip().isdigit()}
+
+    @property
+    def force_join_channels(self) -> list[tuple[str, str]]:
+        """
+        خروجی: لیست (chat_id, invite_url) از روی FORCE_JOIN_CHANNELS.
+        اگه متغیر خالی باشه، لیست خالی برمی‌گرده (فیچر غیرفعال).
+        """
+        result: list[tuple[str, str]] = []
+        raw = self.FORCE_JOIN_CHANNELS.strip()
+        if not raw:
+            return result
+
+        for item in raw.split(","):
+            item = item.strip()
+            if not item:
+                continue
+            if "|" in item:
+                chat_id, url = item.split("|", 1)
+                chat_id, url = chat_id.strip(), url.strip()
+            elif item.startswith("@"):
+                chat_id = item
+                url = f"https://t.me/{item[1:]}"
+            else:
+                # اگه فرمت نامعتبر بود (نه @username و نه chat_id|url)، رد میشه
+                continue
+            if chat_id and url:
+                result.append((chat_id, url))
+        return result
 
 
 settings = Settings()
