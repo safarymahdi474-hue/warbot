@@ -121,7 +121,9 @@ def can_attack(user: User) -> str | None:
     return None
 
 
-async def resolve_bot_battle(session: AsyncSession, attacker: User, difficulty: str) -> BattleReport:
+async def resolve_bot_battle(
+    session: AsyncSession, attacker: User, difficulty: str, strategy_key: str = "balanced"
+) -> BattleReport:
     diff = BOT_DIFFICULTIES[difficulty]
 
     attacker_units, attacker_research = await load_combat_units_and_research(session, attacker.id)
