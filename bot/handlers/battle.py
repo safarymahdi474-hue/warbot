@@ -12,6 +12,7 @@ from bot.utils.alliance import add_war_score, get_active_war_between
 from bot.utils.battle import BOT_DIFFICULTIES, can_attack, resolve_bot_battle, resolve_pvp_battle
 from bot.utils.missions import record_progress
 from bot.utils.progression import regen_energy
+from bot.utils.battle import ATTACK_STRATEGIES, BOT_DIFFICULTIES, can_attack, resolve_bot_battle, resolve_pvp_battle
 
 router = Router(name="battle")
 
