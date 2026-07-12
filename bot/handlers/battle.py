@@ -37,6 +37,16 @@ def attack_menu_keyboard() -> InlineKeyboardMarkup:
     )
 
 
+def post_pvp_battle_keyboard(defender_id: int, strategy_key: str, show_revenge: bool) -> InlineKeyboardMarkup:
+    rows = []
+    if show_revenge:
+        rows.append(
+            [InlineKeyboardButton(text="⚔️ انتقام!", callback_data=f"attack_pvp:{defender_id}:{strategy_key}")]
+        )
+    rows.append([InlineKeyboardButton(text="🔙 بازگشت به منوی حمله", callback_data="show_attack_menu")])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
 @router.message(Command("attack"))
 async def cmd_attack(message: Message) -> None:
     await message.answer(
@@ -352,7 +362,12 @@ async def cb_attack_pvp(callback: CallbackQuery) -> None:
         except Exception:
             pass
 
-    await callback.message.edit_text(text, reply_markup=attack_menu_keyboard(), parse_mode="HTML")
+    show_revenge = report.winner == "defender"  # یعنی مهاجم (خودت) باختی
+    await callback.message.edit_text(
+        text,
+        reply_markup=post_pvp_battle_keyboard(defender_id, strategy_key, show_revenge),
+        parse_mode="HTML",
+    )
     await callback.answer()
 
 
