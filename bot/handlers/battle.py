@@ -67,22 +67,13 @@ def strategy_intro_text() -> str:
         lines.append(f"{s['label']}\n   {s['desc']}")
     return "\n\n".join(lines)
     
-def bot_difficulty_keyboard(user_level: int | None = None) -> InlineKeyboardMarkup:
-    """
-    اگه user_level داده بشه، سختی‌های elite/boss که به لول کافی نرسیده باشن
-    قفل نشون داده میشن (دکمه‌شون فقط یه پیام «قفله» میده، callback واقعی نداره).
-    """
-    rows = []
-    for key, d in BOT_DIFFICULTIES.items():
-        required_level = BOT_DIFFICULTY_MIN_LEVEL.get(key, 1)
-        if user_level is not None and user_level < required_level:
-            label = f"🔒 {d['label']} (لول {required_level}+)"
-            rows.append([InlineKeyboardButton(text=label, callback_data="building_max")])
-        else:
-            rows.append([InlineKeyboardButton(text=d["label"], callback_data=f"attack_bot:{key}")])
-    rows.append([InlineKeyboardButton(text="🔙 بازگشت", callback_data="show_attack_menu")])
+def bot_difficulty_keyboard(strategy_key: str) -> InlineKeyboardMarkup:
+    rows = [
+        [InlineKeyboardButton(text=d["label"], callback_data=f"attack_bot:{key}:{strategy_key}")]
+        for key, d in BOT_DIFFICULTIES.items()
+    ]
+    rows.append([InlineKeyboardButton(text="🔙 بازگشت", callback_data="attack_bot_menu")])
     return InlineKeyboardMarkup(inline_keyboard=rows)
-
 
 @router.callback_query(F.data == "attack_bot_menu")
 async def cb_attack_bot_menu(callback: CallbackQuery) -> None:
