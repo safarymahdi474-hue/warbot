@@ -7,11 +7,18 @@ from bot.database.models import Country, UserBuilding
 COUNTRIES_PAGE_SIZE = 40
 
 
-def countries_keyboard(countries: list[Country], page: int = 0) -> InlineKeyboardMarkup:
+def countries_keyboard(
+    countries: list[Country], page: int = 0, taken_country_ids: set[int] | None = None
+) -> InlineKeyboardMarkup:
     """
     کیبورد صفحه‌بندی‌شده‌ی انتخاب کشور. countries باید از قبل به ترتیب پایدار
     (مثلا بر اساس id) مرتب شده باشه تا شماره‌ی صفحه‌ها هر بار یکسان بمونه.
+
+    کشورهایی که id شون توی taken_country_ids باشه (یعنی توی همین روم یه نفر
+    دیگه قبلاً انتخابشون کرده) با تیک ✅ نشون داده میشن و دکمه‌شون غیرفعاله
+    (به‌جای pick_country، یه callback نمایشی/خطا می‌فرستن).
     """
+    taken_country_ids = taken_country_ids or set()
     total_pages = max(1, (len(countries) + COUNTRIES_PAGE_SIZE - 1) // COUNTRIES_PAGE_SIZE)
     page = max(0, min(page, total_pages - 1))
 
@@ -21,12 +28,14 @@ def countries_keyboard(countries: list[Country], page: int = 0) -> InlineKeyboar
     rows = []
     row = []
     for i, c in enumerate(page_items, start=1):
-        row.append(
-            InlineKeyboardButton(
-                text=f"{c.flag_emoji} {c.name_fa}",
-                callback_data=f"pick_country:{c.id}",
-            )
-        )
+        if c.id in taken_country_ids:
+            text = f"✅ {c.flag_emoji} {c.name_fa}"
+            callback_data = "country_taken"
+        else:
+            text = f"{c.flag_emoji} {c.name_fa}"
+            callback_data = f"pick_country:{c.id}"
+
+        row.append(InlineKeyboardButton(text=text, callback_data=callback_data))
         if i % 2 == 0:
             rows.append(row)
             row = []
