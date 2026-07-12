@@ -180,6 +180,7 @@ async def resolve_bot_battle(
 
     npc_power = int(max(attacker_power, 100) * diff["power_mult"] * random.uniform(0.85, 1.15))
 
+    report._event = event  # type: ignore[attr-defined]
     event = roll_battle_event()
     if event["side"] in ("attacker", "both"):
         attacker_power = int(attacker_power * event["power_mult"])
