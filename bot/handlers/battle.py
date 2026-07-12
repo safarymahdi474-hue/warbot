@@ -219,12 +219,11 @@ async def cb_attack_pvp_strategy(callback: CallbackQuery) -> None:
 
 @router.callback_query(F.data.startswith("attack_pvp:"))
 async def cb_attack_pvp(callback: CallbackQuery) -> None:
-    defender_id = int(callback.data.split(":")[1])
+    _, defender_id_str, strategy_key = callback.data.split(":")
+    defender_id = int(defender_id_str)
 
     async with get_session() as session:
-        result = await session.execute(
-            select(User).options(selectinload(User.country)).where(*user_scope(callback.from_user.id))
-        )
+        result = await session.execute(select(User).where(*user_scope(callback.from_user.id)))
         attacker = result.scalar_one_or_none()
         if attacker is None:
             await callback.answer("هنوز ثبت‌نام نکردی!", show_alert=True)
@@ -237,7 +236,7 @@ async def cb_attack_pvp(callback: CallbackQuery) -> None:
             await session.commit()
             return
 
-        defender = await session.get(User, defender_id, options=[selectinload(User.country)])
+        defender = await session.get(User, defender_id)
         if defender is None:
             await callback.answer("این بازیکن دیگه در دسترس نیست.", show_alert=True)
             return
@@ -245,14 +244,13 @@ async def cb_attack_pvp(callback: CallbackQuery) -> None:
             await callback.answer("این بازیکن مال این گروه/چت نیست.", show_alert=True)
             return
 
-        report = await resolve_pvp_battle(session, attacker, defender)
+        report = await resolve_pvp_battle(session, attacker, defender, strategy_key)
         leveled_up = getattr(report, "_leveled_up", [])
         defender_nickname = defender.nickname
         await record_progress(session, attacker, "pvp_battle", 1)
         if report.winner == "attacker":
             await record_progress(session, attacker, "battle_win", 1)
 
-        # اگه هر دو عضو اتحادن و اتحادهاشون در جنگن، امتیاز جنگ به برنده اضافه میشه
         war_note = ""
         if attacker.alliance_id and defender.alliance_id and attacker.alliance_id != defender.alliance_id:
             war = await get_active_war_between(session, attacker.alliance_id, defender.alliance_id)
