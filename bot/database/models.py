@@ -298,6 +298,22 @@ class BattleReport(Base):
     attacker: Mapped["User"] = relationship(foreign_keys=[attacker_id])
     defender: Mapped["User"] = relationship(foreign_keys=[defender_id])
 
+class PvpSeasonScore(Base):
+    """
+    شمارش پیروزی‌های PvP هر کاربر در یک بازه‌ی هفتگی (period_key مثل '2026-W28').
+    برای رتبه‌بندی هفتگی و جایزه‌ی پایان فصل استفاده میشه.
+    """
+    __tablename__ = "pvp_season_scores"
+    __table_args__ = (UniqueConstraint("user_id", "period_key", name="uq_user_pvp_season"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
+    period_key: Mapped[str] = mapped_column(String(16))
+    room_id: Mapped[int | None] = mapped_column(ForeignKey("rooms.id"), nullable=True)
+    wins: Mapped[int] = mapped_column(Integer, default=0)
+    reward_claimed: Mapped[bool] = mapped_column(Boolean, default=False)
+
+    user: Mapped["User"] = relationship()
 
 class MissionType(Base):
     """
