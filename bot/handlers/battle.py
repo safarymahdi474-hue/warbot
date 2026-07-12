@@ -128,6 +128,25 @@ def build_bot_report_text(report: BattleReport, leveled_up: list[int], random_ev
     won = report.winner == "attacker"
     header = "🎉 <b>پیروز شدی!</b>" if won else "💥 <b>شکست خوردی!</b>"
     lines = [header]
+    def build_bot_report_text(report: BattleReport, leveled_up: list[int]) -> str:
+    won = report.winner == "attacker"
+    header = "🎉 <b>پیروز شدی!</b>" if won else "💥 <b>شکست خوردی!</b>"
+    lines = [header]
+
+    event = getattr(report, "_event", None)
+    if event and event.get("label"):
+        lines.append(event["label"])
+
+    lines += [
+        f"⚔️ قدرت تو: {report.attacker_power} | 🤖 قدرت ربات: {report.defender_power}",
+        f"❤️ HP از دست رفته: {report.attacker_hp_lost}",
+        f"💀 نیروی از دست رفته: {report.attacker_units_lost}",
+        f"💰 طلای بدست‌اومده: {report.loot_gold}",
+        f"⭐ XP: +{report.xp_gained}",
+    ]
+    if leveled_up:
+        lines.append(f"\n🎊 لول‌آپ کردی! سطح جدید: {leveled_up[-1]}")
+    return "\n".join(lines)
 
     if random_event == "ambush":
         lines.append("🌫️ <i>کمین!</i> قدرت دشمن غافلگیر شد و ۱۵٪ افت کرد.")
