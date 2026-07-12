@@ -261,7 +261,7 @@ async def resolve_pvp_battle(
     defender_power = compute_power(
         defender_units, defender_research, defender_country_bonus, "defense", defender_defense_boost
     )
-
+report._event = event  # type: ignore[attr-defined]
     event = roll_battle_event()
     if event["side"] in ("attacker", "both"):
         attacker_power = int(attacker_power * event["power_mult"])
