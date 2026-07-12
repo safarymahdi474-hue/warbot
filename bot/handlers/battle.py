@@ -51,7 +51,22 @@ async def cb_attack_menu(callback: CallbackQuery) -> None:
 # ---------------------------------------------------------------------------
 # نبرد با ربات (NPC)
 # ---------------------------------------------------------------------------
+def strategy_keyboard(next_prefix: str) -> InlineKeyboardMarkup:
+    """next_prefix مثلا 'attack_bot_strategy' یا 'attack_pvp_strategy'."""
+    rows = [
+        [InlineKeyboardButton(text=s["label"], callback_data=f"{next_prefix}:{key}")]
+        for key, s in ATTACK_STRATEGIES.items()
+    ]
+    rows.append([InlineKeyboardButton(text="🔙 بازگشت", callback_data="show_attack_menu")])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
 
+
+def strategy_intro_text() -> str:
+    lines = ["🎯 <b>استراتژی حمله رو انتخاب کن:</b>\n"]
+    for s in ATTACK_STRATEGIES.values():
+        lines.append(f"{s['label']}\n   {s['desc']}")
+    return "\n\n".join(lines)
+    
 def bot_difficulty_keyboard(user_level: int | None = None) -> InlineKeyboardMarkup:
     """
     اگه user_level داده بشه، سختی‌های elite/boss که به لول کافی نرسیده باشن
