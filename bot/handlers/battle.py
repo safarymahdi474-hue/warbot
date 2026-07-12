@@ -168,17 +168,17 @@ async def _find_pvp_targets(session, attacker: User) -> list[User]:
     return list(result.scalars().all())
 
 
-def pvp_targets_keyboard(targets: list[User]) -> InlineKeyboardMarkup:
+def pvp_targets_keyboard(targets: list[User], strategy_key: str) -> InlineKeyboardMarkup:
     rows = [
         [
             InlineKeyboardButton(
                 text=f"⚔️ {t.nickname} (لول {t.level})",
-                callback_data=f"attack_pvp:{t.id}",
+                callback_data=f"attack_pvp:{t.id}:{strategy_key}",
             )
         ]
         for t in targets
     ]
-    rows.append([InlineKeyboardButton(text="🔄 لیست جدید", callback_data="attack_pvp_menu")])
+    rows.append([InlineKeyboardButton(text="🔄 لیست جدید", callback_data=f"attack_pvp_strategy:{strategy_key}")])
     rows.append([InlineKeyboardButton(text="🔙 بازگشت", callback_data="show_attack_menu")])
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
