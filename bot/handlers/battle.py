@@ -18,6 +18,7 @@ from bot.utils.battle import (
 )
 from bot.utils.missions import record_progress
 from bot.utils.progression import regen_energy
+from bot.utils.spy import can_spy, perform_spy
 
 router = Router(name="battle")
 
@@ -179,15 +180,20 @@ async def _find_pvp_targets(session, attacker: User) -> list[User]:
 
 
 def pvp_targets_keyboard(targets: list[User], strategy_key: str) -> InlineKeyboardMarkup:
-    rows = [
-        [
-            InlineKeyboardButton(
-                text=f"⚔️ {t.nickname} (لول {t.level})",
-                callback_data=f"attack_pvp:{t.id}:{strategy_key}",
-            )
-        ]
-        for t in targets
-    ]
+    rows = []
+    for t in targets:
+        rows.append(
+            [
+                InlineKeyboardButton(
+                    text=f"⚔️ {t.nickname} (لول {t.level})",
+                    callback_data=f"attack_pvp:{t.id}:{strategy_key}",
+                ),
+                InlineKeyboardButton(
+                    text=f"🕵️ جاسوسی ({settings.SPY_GOLD_COST}💰)",
+                    callback_data=f"spy_pvp:{t.id}:{strategy_key}",
+                ),
+            ]
+        )
     rows.append([InlineKeyboardButton(text="🔄 لیست جدید", callback_data=f"attack_pvp_strategy:{strategy_key}")])
     rows.append([InlineKeyboardButton(text="🔙 بازگشت", callback_data="show_attack_menu")])
     return InlineKeyboardMarkup(inline_keyboard=rows)
@@ -226,6 +232,56 @@ async def cb_attack_pvp_strategy(callback: CallbackQuery) -> None:
         reply_markup=pvp_targets_keyboard(targets, strategy_key),
     )
     await callback.answer()
+
+
+@router.callback_query(F.data.startswith("spy_pvp:"))
+async def cb_spy_pvp(callback: CallbackQuery) -> None:
+    _, target_id_str, strategy_key = callback.data.split(":")
+    target_id = int(target_id_str)
+
+    async with get_session() as session:
+        result = await session.execute(
+            select(User).options(selectinload(User.country)).where(*user_scope(callback.from_user.id))
+        )
+        spy_user = result.scalar_one_or_none()
+        if spy_user is None:
+            await callback.answer("هنوز ثبت‌نام نکردی!", show_alert=True)
+            return
+
+        error = can_spy(spy_user)
+        if error:
+            await callback.answer(error, show_alert=True)
+            return
+
+        target = await session.get(User, target_id, options=[selectinload(User.country)])
+        if target is None:
+            await callback.answer("این بازیکن دیگه در دسترس نیست.", show_alert=True)
+            return
+        if target.room_id != current_room():
+            await callback.answer("این بازیکن مال این گروه/چت نیست.", show_alert=True)
+            return
+
+        spy_result = await perform_spy(session, spy_user, target)
+        target_nickname = target.nickname
+        target_notify = target.notifications_enabled
+        target_telegram_id = target.telegram_id
+        await session.commit()
+
+    msg = f"🕵️ تخمین قدرت دفاعی {target_nickname}:\nبین {spy_result['low']} تا {spy_result['high']}"
+    if spy_result["detected"]:
+        msg += "\n\n⚠️ جاسوسیت لو رفت! هدف آماده‌باش شد و دفاعش موقتاً بالا رفت."
+    await callback.answer(msg, show_alert=True)
+
+    if spy_result["detected"] and target_notify:
+        try:
+            await callback.bot.send_message(
+                target_telegram_id,
+                f"🚨 یکی داشت جاسوسیت می‌کرد ولی لو رفت! به مدت "
+                f"{settings.SPY_DETECTED_DEFENSE_DURATION_MINUTES} دقیقه دفاعت بیشتر شد.",
+                parse_mode="HTML",
+            )
+        except Exception:
+            pass
 
 
 @router.callback_query(F.data.startswith("attack_pvp:"))
