@@ -18,17 +18,44 @@ BOT_DIFFICULTIES = {
     "easy": {"label": "🟢 آسان", "power_mult": 0.6, "gold_reward": 150, "xp_reward": 40},
     "medium": {"label": "🟡 متوسط", "power_mult": 1.0, "gold_reward": 350, "xp_reward": 90},
     "hard": {"label": "🔴 سخت", "power_mult": 1.5, "gold_reward": 700, "xp_reward": 180},
-    "elite": {"label": "🟣 نخبه", "power_mult": 2.2, "gold_reward": 1400, "xp_reward": 320},
-    "boss": {"label": "☠️ باس فصلی", "power_mult": 3.2, "gold_reward": 3000, "xp_reward": 600},
 }
 
-# احتمال رویدادهای تصادفی در نبرد با ربات (روی یک رول واحد چک میشن، نه دو رول جدا)
-AMBUSH_CHANCE = 0.12   # کمین: قدرت دشمن ۱۵٪ کمتر محاسبه میشه
-CRITICAL_CHANCE = 0.10  # ضربه بحرانی: قدرت خودت ۱۵٪ بیشتر محاسبه میشه
 
 # ---------------------------------------------------------------------------
 # استراتژی حمله - قبل از هر نبرد (بات یا PvP) انتخاب میشه
 # ---------------------------------------------------------------------------
+ATTACK_STRATEGIES = {
+    "balanced": {
+        "label": "⚖️ حمله متعادل",
+        "desc": "همون تعادل همیشگی بین آسیب و غارت.",
+        "power_mult": 1.0,
+        "loot_mult": 1.0,
+        "enemy_unit_loss_mult": 1.0,
+        "own_hp_loss_mult": 1.0,
+    },
+    "damage": {
+        "label": "⚔️ ضربه به نیروها",
+        "desc": "آسیب بیشتر به نیروهای حریف، ولی غارت کمتر.",
+        "power_mult": 1.10,
+        "loot_mult": 0.6,
+        "enemy_unit_loss_mult": 1.6,
+        "own_hp_loss_mult": 1.1,
+    },
+    "loot": {
+        "label": "💰 غارت منابع",
+        "desc": "غارت و طلای بیشتر، ولی آسیب کمتر به نیروهای حریف.",
+        "power_mult": 0.9,
+        "loot_mult": 1.6,
+        "enemy_unit_loss_mult": 0.5,
+        "own_hp_loss_mult": 1.0,
+    },
+}
+
+
+def get_strategy(key: str) -> dict:
+    return ATTACK_STRATEGIES.get(key, ATTACK_STRATEGIES["balanced"])
+
+
 # ---------------------------------------------------------------------------
 # اتفاق‌های شانسی حین نبرد - قبل از تعیین برنده رخ می‌دن و قدرت‌ها رو تغییر می‌دن
 # ---------------------------------------------------------------------------
@@ -75,37 +102,7 @@ BATTLE_EVENTS = [
 def roll_battle_event() -> dict:
     weights = [e["weight"] for e in BATTLE_EVENTS]
     return random.choices(BATTLE_EVENTS, weights=weights, k=1)[0]
-    
-ATTACK_STRATEGIES = {
-    "balanced": {
-        "label": "⚖️ حمله متعادل",
-        "desc": "همون تعادل همیشگی بین آسیب و غارت.",
-        "power_mult": 1.0,
-        "loot_mult": 1.0,
-        "enemy_unit_loss_mult": 1.0,
-        "own_hp_loss_mult": 1.0,
-    },
-    "damage": {
-        "label": "⚔️ ضربه به نیروها",
-        "desc": "آسیب بیشتر به نیروهای حریف، ولی غارت کمتر.",
-        "power_mult": 1.10,
-        "loot_mult": 0.6,
-        "enemy_unit_loss_mult": 1.6,
-        "own_hp_loss_mult": 1.1,
-    },
-    "loot": {
-        "label": "💰 غارت منابع",
-        "desc": "غارت و طلای بیشتر، ولی آسیب کمتر به نیروهای حریف.",
-        "power_mult": 0.9,
-        "loot_mult": 1.6,
-        "enemy_unit_loss_mult": 0.5,
-        "own_hp_loss_mult": 1.0,
-    },
-}
 
-
-def get_strategy(key: str) -> dict:
-    return ATTACK_STRATEGIES.get(key, ATTACK_STRATEGIES["balanced"])
 
 async def load_combat_units_and_research(
     session: AsyncSession, user_id: int
