@@ -291,13 +291,6 @@ def build_pvp_report_text(report: BattleReport, defender_nickname: str, leveled_
         if won
         else f"💥 <b>از {defender_nickname} شکست خوردی!</b>"
     )
-    def build_pvp_report_text(report: BattleReport, defender_nickname: str, leveled_up: list[int]) -> str:
-    won = report.winner == "attacker"
-    header = (
-        f"🎉 <b>{defender_nickname} رو شکست دادی!</b>"
-        if won
-        else f"💥 <b>از {defender_nickname} شکست خوردی!</b>"
-    )
     lines = [header]
 
     event = getattr(report, "_event", None)
@@ -325,30 +318,6 @@ def build_pvp_report_text(report: BattleReport, defender_nickname: str, leveled_
     if leveled_up:
         lines.append(f"\n🎊 لول‌آپ کردی! سطح جدید: {leveled_up[-1]}")
     return "\n".join(lines)
-    lines = [
-        header,
-        f"⚔️ قدرت تو: {report.attacker_power} | 🛡️ قدرت طرف مقابل: {report.defender_power}",
-        f"❤️ HP از دست رفته: {report.attacker_hp_lost}",
-        f"💀 نیروی از دست رفته (تو): {report.attacker_units_lost} | (طرف مقابل): {report.defender_units_lost}",
-    ]
-    if won:
-        loot_parts = []
-        if report.loot_gold:
-            loot_parts.append(f"💰{report.loot_gold}")
-        if report.loot_iron:
-            loot_parts.append(f"⛏️{report.loot_iron}")
-        if report.loot_oil:
-            loot_parts.append(f"🛢️{report.loot_oil}")
-        if report.loot_food:
-            loot_parts.append(f"🌾{report.loot_food}")
-        if loot_parts:
-            lines.append("🏴‍☠️ غارت: " + " ".join(loot_parts))
-    lines.append(f"⭐ XP: +{report.xp_gained}")
-    if leveled_up:
-        lines.append(f"\n🎊 لول‌آپ کردی! سطح جدید: {leveled_up[-1]}")
-    return "\n".join(lines)
-
-
 # ---------------------------------------------------------------------------
 # گزارش‌های اخیر
 # ---------------------------------------------------------------------------
