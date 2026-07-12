@@ -180,6 +180,15 @@ async def resolve_bot_battle(
 
     npc_power = int(max(attacker_power, 100) * diff["power_mult"] * random.uniform(0.85, 1.15))
 
+    event = roll_battle_event()
+    if event["side"] in ("attacker", "both"):
+        attacker_power = int(attacker_power * event["power_mult"])
+    if event["side"] in ("defender", "both"):
+        npc_power = int(npc_power * event["power_mult"])
+
+    roll_attacker = attacker_power * random.uniform(0.9, 1.1)
+    roll_npc = npc_power * random.uniform(0.9, 1.1)
+    
     # رویداد تصادفی نبرد - روی یک رول واحد تا احتمالات هم‌پوشانی نداشته باشن
     random_event = None
     event_roll = random.random()
