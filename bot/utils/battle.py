@@ -172,15 +172,16 @@ async def resolve_bot_battle(
     session: AsyncSession, attacker: User, difficulty: str, strategy_key: str = "balanced"
 ) -> BattleReport:
     diff = BOT_DIFFICULTIES[difficulty]
+    strategy = get_strategy(strategy_key)
 
     attacker_units, attacker_research = await load_combat_units_and_research(session, attacker.id)
     country_bonus = attacker.country.military_bonus_percent if attacker.country else 0.0
     attack_boost = await get_active_boost_percent(session, attacker.id, "attack_percent")
     attacker_power = compute_power(attacker_units, attacker_research, country_bonus, "attack", attack_boost)
+    attacker_power = int(attacker_power * strategy["power_mult"])
 
     npc_power = int(max(attacker_power, 100) * diff["power_mult"] * random.uniform(0.85, 1.15))
 
-    report._event = event  # type: ignore[attr-defined]
     event = roll_battle_event()
     if event["side"] in ("attacker", "both"):
         attacker_power = int(attacker_power * event["power_mult"])
@@ -189,32 +190,19 @@ async def resolve_bot_battle(
 
     roll_attacker = attacker_power * random.uniform(0.9, 1.1)
     roll_npc = npc_power * random.uniform(0.9, 1.1)
-    
-    # رویداد تصادفی نبرد - روی یک رول واحد تا احتمالات هم‌پوشانی نداشته باشن
-    random_event = None
-    event_roll = random.random()
-    if event_roll < AMBUSH_CHANCE:
-        random_event = "ambush"
-        npc_power = int(npc_power * 0.85)
-    elif event_roll < AMBUSH_CHANCE + CRITICAL_CHANCE:
-        random_event = "critical"
-        attacker_power = int(attacker_power * 1.15)
-
-    roll_attacker = attacker_power * random.uniform(0.9, 1.1)
-    roll_npc = npc_power * random.uniform(0.9, 1.1)
 
     attacker.energy -= settings.ATTACK_ENERGY_COST
     won = roll_attacker >= roll_npc
 
     if won:
-        hp_loss = int(attacker.max_hp * settings.WINNER_HP_LOSS_PERCENT / 100)
+        hp_loss = int(attacker.max_hp * settings.WINNER_HP_LOSS_PERCENT / 100 * strategy["own_hp_loss_mult"])
         unit_loss_percent = settings.WINNER_UNIT_LOSS_PERCENT
-        gold_reward = diff["gold_reward"]
+        gold_reward = int(diff["gold_reward"] * strategy["loot_mult"])
         xp_reward = diff["xp_reward"]
     else:
-        hp_loss = int(attacker.max_hp * settings.LOSER_HP_LOSS_PERCENT / 100)
+        hp_loss = int(attacker.max_hp * settings.LOSER_HP_LOSS_PERCENT / 100 * strategy["own_hp_loss_mult"])
         unit_loss_percent = settings.LOSER_UNIT_LOSS_PERCENT
-        gold_reward = diff["gold_reward"] // 4
+        gold_reward = int((diff["gold_reward"] // 4) * strategy["loot_mult"])
         xp_reward = diff["xp_reward"] // 3
 
     attacker.hp = max(1, attacker.hp - hp_loss)
@@ -238,8 +226,8 @@ async def resolve_bot_battle(
         xp_gained=xp_reward,
     )
     session.add(report)
-    report._leveled_up = leveled_up  # type: ignore[attr-defined]  # فقط برای نمایش پیام، در دیتابیس ذخیره نمیشه
-    report._random_event = random_event  # type: ignore[attr-defined]  # فقط برای نمایش پیام، در دیتابیس ذخیره نمیشه
+    report._leveled_up = leveled_up  # type: ignore[attr-defined]
+    report._event = event  # type: ignore[attr-defined]
     return report
 
 
