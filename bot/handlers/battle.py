@@ -86,14 +86,17 @@ def bot_difficulty_keyboard(user_level: int | None = None) -> InlineKeyboardMark
 
 @router.callback_query(F.data == "attack_bot_menu")
 async def cb_attack_bot_menu(callback: CallbackQuery) -> None:
-    async with get_session() as session:
-        result = await session.execute(select(User).where(*user_scope(callback.from_user.id)))
-        user = result.scalar_one_or_none()
-        user_level = user.level if user else 1
-
     await callback.message.edit_text(
-        "🤖 سختی نبرد رو انتخاب کن (هرچی سخت‌تر، پاداش بیشتر ولی ریسک بیشتر):",
-        reply_markup=bot_difficulty_keyboard(user_level),
+        strategy_intro_text(), reply_markup=strategy_keyboard("attack_bot_strategy"), parse_mode="HTML"
+    )
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("attack_bot_strategy:"))
+async def cb_attack_bot_strategy(callback: CallbackQuery) -> None:
+    strategy_key = callback.data.split(":")[1]
+    await callback.message.edit_text(
+        "🤖 سختی نبرد رو انتخاب کن:", reply_markup=bot_difficulty_keyboard(strategy_key)
     )
     await callback.answer()
 
