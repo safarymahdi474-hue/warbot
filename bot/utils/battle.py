@@ -262,6 +262,12 @@ async def resolve_pvp_battle(
         defender_units, defender_research, defender_country_bonus, "defense", defender_defense_boost
     )
 
+    event = roll_battle_event()
+    if event["side"] in ("attacker", "both"):
+        attacker_power = int(attacker_power * event["power_mult"])
+    if event["side"] in ("defender", "both"):
+        defender_power = int(defender_power * event["power_mult"])
+
     attacker.energy -= settings.ATTACK_ENERGY_COST
 
     roll_attacker = attacker_power * random.uniform(0.9, 1.1)
