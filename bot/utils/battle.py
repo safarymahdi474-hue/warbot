@@ -26,6 +26,39 @@ BOT_DIFFICULTIES = {
 AMBUSH_CHANCE = 0.12   # کمین: قدرت دشمن ۱۵٪ کمتر محاسبه میشه
 CRITICAL_CHANCE = 0.10  # ضربه بحرانی: قدرت خودت ۱۵٪ بیشتر محاسبه میشه
 
+# ---------------------------------------------------------------------------
+# استراتژی حمله - قبل از هر نبرد (بات یا PvP) انتخاب میشه
+# ---------------------------------------------------------------------------
+ATTACK_STRATEGIES = {
+    "balanced": {
+        "label": "⚖️ حمله متعادل",
+        "desc": "همون تعادل همیشگی بین آسیب و غارت.",
+        "power_mult": 1.0,
+        "loot_mult": 1.0,
+        "enemy_unit_loss_mult": 1.0,
+        "own_hp_loss_mult": 1.0,
+    },
+    "damage": {
+        "label": "⚔️ ضربه به نیروها",
+        "desc": "آسیب بیشتر به نیروهای حریف، ولی غارت کمتر.",
+        "power_mult": 1.10,
+        "loot_mult": 0.6,
+        "enemy_unit_loss_mult": 1.6,
+        "own_hp_loss_mult": 1.1,
+    },
+    "loot": {
+        "label": "💰 غارت منابع",
+        "desc": "غارت و طلای بیشتر، ولی آسیب کمتر به نیروهای حریف.",
+        "power_mult": 0.9,
+        "loot_mult": 1.6,
+        "enemy_unit_loss_mult": 0.5,
+        "own_hp_loss_mult": 1.0,
+    },
+}
+
+
+def get_strategy(key: str) -> dict:
+    return ATTACK_STRATEGIES.get(key, ATTACK_STRATEGIES["balanced"])
 
 async def load_combat_units_and_research(
     session: AsyncSession, user_id: int
