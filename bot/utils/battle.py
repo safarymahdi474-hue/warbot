@@ -186,7 +186,9 @@ async def resolve_bot_battle(
     return report
 
 
-async def resolve_pvp_battle(session: AsyncSession, attacker: User, defender: User) -> BattleReport:
+async def resolve_pvp_battle(
+    session: AsyncSession, attacker: User, defender: User, strategy_key: str = "balanced"
+) -> BattleReport:
     attacker_units, attacker_research = await load_combat_units_and_research(session, attacker.id)
     defender_units, defender_research = await load_combat_units_and_research(session, defender.id)
 
