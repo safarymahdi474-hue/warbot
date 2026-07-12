@@ -185,6 +185,16 @@ def pvp_targets_keyboard(targets: list[User]) -> InlineKeyboardMarkup:
 
 @router.callback_query(F.data == "attack_pvp_menu")
 async def cb_attack_pvp_menu(callback: CallbackQuery) -> None:
+    await callback.message.edit_text(
+        strategy_intro_text(), reply_markup=strategy_keyboard("attack_pvp_strategy"), parse_mode="HTML"
+    )
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("attack_pvp_strategy:"))
+async def cb_attack_pvp_strategy(callback: CallbackQuery) -> None:
+    strategy_key = callback.data.split(":")[1]
+
     async with get_session() as session:
         result = await session.execute(select(User).where(*user_scope(callback.from_user.id)))
         attacker = result.scalar_one_or_none()
@@ -203,10 +213,9 @@ async def cb_attack_pvp_menu(callback: CallbackQuery) -> None:
 
     await callback.message.edit_text(
         "👥 یکی از این بازیکن‌ها رو برای حمله انتخاب کن:",
-        reply_markup=pvp_targets_keyboard(targets),
+        reply_markup=pvp_targets_keyboard(targets, strategy_key),
     )
     await callback.answer()
-
 
 @router.callback_query(F.data.startswith("attack_pvp:"))
 async def cb_attack_pvp(callback: CallbackQuery) -> None:
