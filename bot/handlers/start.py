@@ -24,6 +24,7 @@ from bot.database.models import (
     UserUnit,
 )
 from bot.keyboards.menus import countries_keyboard, main_menu_keyboard
+from bot.utils.force_join import FORCE_JOIN_TEXT, build_force_join_keyboard, get_unjoined_channels
 
 router = Router(name="start")
 
@@ -48,6 +49,7 @@ async def on_bot_added_to_chat(event: ChatMemberUpdated) -> None:
 
 
 class Registration(StatesGroup):
+    waiting_for_force_join = State()
     waiting_for_nickname = State()
     waiting_for_country = State()
 
@@ -63,6 +65,18 @@ async def _get_sorted_countries(session) -> list[Country]:
     return list(result.scalars().all())
 
 
+def _nickname_intro_text(chat_type: str) -> str:
+    if chat_type == "private":
+        return "🎮 به بازی خوش اومدی!\n\n" + "قبل از هر چیز، یه اسم/نیک‌نیم برای خودت انتخاب کن (۳ تا ۲۰ حرف):"
+    return (
+        "🎮 به بازی خوش اومدی!\n\n"
+        "🏠 چون اینجا یه گروهه، از الان این گروه یه <b>فضای بازی مستقل</b> برای اعضاشه: "
+        "منابع، ارتش، ساختمان، اتحاد و بازار فقط بین اعضای همین گروه رد و بدل میشه و به "
+        "پروفایل خصوصی یا گروه‌های دیگه‌ت ربطی نداره.\n\n"
+        "قبل از هر چیز، یه اسم/نیک‌نیم برای خودت انتخاب کن (۳ تا ۲۰ حرف):"
+    )
+
+
 # ---------------------------------------------------------------------------
 # بازگشت مشترک به منوی اصلی - از همه‌ی بخش‌های ربات صدا زده میشه
 # ---------------------------------------------------------------------------
@@ -75,6 +89,10 @@ async def cb_show_main_menu(callback: CallbackQuery) -> None:
         await callback.message.answer("🏠 منوی اصلی:", reply_markup=main_menu_keyboard())
     await callback.answer()
 
+
+# ---------------------------------------------------------------------------
+# شروع ثبت‌نام: اول عضویت اجباری، بعد نیک‌نیم، بعد کشور
+# ---------------------------------------------------------------------------
 
 @router.message(CommandStart())
 async def cmd_start(message: Message, state: FSMContext, command: CommandObject) -> None:
@@ -91,27 +109,48 @@ async def cmd_start(message: Message, state: FSMContext, command: CommandObject)
             )
             return
 
-        # کاربر جدیده -> شروع فرآیند ثبت‌نام
-        # اگه با کد معرف اومده باشه (/start CODE123) ذخیره‌اش می‌کنیم برای فاز دعوت دوستان
-        referral_code_used = command.args
-        await state.update_data(referred_by_code=referral_code_used)
+    # کاربر جدیده -> کد معرف احتمالی رو ذخیره می‌کنیم (/start CODE123)
+    referral_code_used = command.args
+    await state.update_data(referred_by_code=referral_code_used)
 
-    if message.chat.type == "private":
-        intro = "🎮 به بازی خوش اومدی!\n\n"
-    else:
-        intro = (
-            "🎮 به بازی خوش اومدی!\n\n"
-            "🏠 چون اینجا یه گروهه، از الان این گروه یه <b>فضای بازی مستقل</b> برای اعضاشه: "
-            "منابع، ارتش، ساختمان، اتحاد و بازار فقط بین اعضای همین گروه رد و بدل میشه و به "
-            "پروفایل خصوصی یا گروه‌های دیگه‌ت ربطی نداره.\n\n"
-        )
+    # اگه عضویت اجباری فعال باشه (FORCE_JOIN_CHANNELS در .env پر شده باشه)،
+    # اول باید عضویت رو چک کنیم و قبل از هر چیز نشونش بدیم.
+    if settings.force_join_channels:
+        unjoined = await get_unjoined_channels(message.bot, message.from_user.id)
+        if unjoined:
+            keyboard = await build_force_join_keyboard(message.bot, unjoined)
+            await message.answer(FORCE_JOIN_TEXT, reply_markup=keyboard, parse_mode="HTML")
+            await state.set_state(Registration.waiting_for_force_join)
+            return
 
-    await message.answer(
-        intro + "قبل از هر چیز، یه اسم/نیک‌نیم برای خودت انتخاب کن (۳ تا ۲۰ حرف):",
-        parse_mode="HTML",
-    )
+    await message.answer(_nickname_intro_text(message.chat.type), parse_mode="HTML")
     await state.set_state(Registration.waiting_for_nickname)
 
+
+@router.callback_query(Registration.waiting_for_force_join, F.data == "check_force_join")
+async def cb_check_force_join(callback: CallbackQuery, state: FSMContext) -> None:
+    unjoined = await get_unjoined_channels(callback.bot, callback.from_user.id)
+
+    if unjoined:
+        await callback.answer("هنوز توی همه‌ی کانال‌ها عضو نشدی! بعد از عضویت دوباره بزن.", show_alert=True)
+        try:
+            keyboard = await build_force_join_keyboard(callback.bot, unjoined)
+            await callback.message.edit_reply_markup(reply_markup=keyboard)
+        except Exception:
+            pass
+        return
+
+    await callback.answer("✅ عضویت تایید شد!", show_alert=True)
+    try:
+        await callback.message.edit_text(_nickname_intro_text(callback.message.chat.type), parse_mode="HTML")
+    except Exception:
+        await callback.message.answer(_nickname_intro_text(callback.message.chat.type), parse_mode="HTML")
+    await state.set_state(Registration.waiting_for_nickname)
+
+
+# ---------------------------------------------------------------------------
+# نیک‌نیم و انتخاب کشور
+# ---------------------------------------------------------------------------
 
 @router.message(Registration.waiting_for_nickname)
 async def process_nickname(message: Message, state: FSMContext) -> None:
