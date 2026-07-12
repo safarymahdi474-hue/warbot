@@ -107,7 +107,9 @@ async def cb_attack_bot(callback: CallbackQuery) -> None:
     _, difficulty, strategy_key = callback.data.split(":")
 
     async with get_session() as session:
-        result = await session.execute(select(User).where(*user_scope(callback.from_user.id)))
+        result = await session.execute(
+            select(User).options(selectinload(User.country)).where(*user_scope(callback.from_user.id))
+        )
         attacker = result.scalar_one_or_none()
         if attacker is None:
             await callback.answer("هنوز ثبت‌نام نکردی!", show_alert=True)
@@ -232,7 +234,9 @@ async def cb_attack_pvp(callback: CallbackQuery) -> None:
     defender_id = int(defender_id_str)
 
     async with get_session() as session:
-        result = await session.execute(select(User).where(*user_scope(callback.from_user.id)))
+        result = await session.execute(
+            select(User).options(selectinload(User.country)).where(*user_scope(callback.from_user.id))
+        )
         attacker = result.scalar_one_or_none()
         if attacker is None:
             await callback.answer("هنوز ثبت‌نام نکردی!", show_alert=True)
@@ -245,7 +249,7 @@ async def cb_attack_pvp(callback: CallbackQuery) -> None:
             await session.commit()
             return
 
-        defender = await session.get(User, defender_id)
+        defender = await session.get(User, defender_id, options=[selectinload(User.country)])
         if defender is None:
             await callback.answer("این بازیکن دیگه در دسترس نیست.", show_alert=True)
             return
