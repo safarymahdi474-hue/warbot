@@ -91,6 +91,14 @@ class Settings:
     STATEMENT_MIN_LENGTH: int = 10
     STATEMENT_MAX_LENGTH: int = 1000
 
+    # --- جاسوسی ---
+    SPY_GOLD_COST: int = 50
+    SPY_ENERGY_COST: int = 5
+    SPY_ERROR_MARGIN_PERCENT: int = 20  # بازه‌ی تخمین ±۲۰٪ حول قدرت واقعیه
+    SPY_DETECTION_CHANCE_PERCENT: int = 25
+    SPY_DETECTED_DEFENSE_BONUS: int = 15
+    SPY_DETECTED_DEFENSE_DURATION_MINUTES: int = 30
+
     # --- عضویت اجباری (فاز ۱۴) ---
     # لیست کانال‌های عضویت اجباری، جدا شده با کاما. ربات باید توی همه‌ی این
     # کانال‌ها ادمین باشه تا بتونه عضویت رو چک کنه. دو فرمت پشتیبانی میشه:
