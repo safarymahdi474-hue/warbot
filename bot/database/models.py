@@ -376,6 +376,9 @@ class Alliance(Base):
     room_id: Mapped[int | None] = mapped_column(ForeignKey("rooms.id"), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
+    # --- صندوق اتحاد (فاز حمله‌ی گروهی) - سهمی از غارت حمله‌های گروهی اینجا جمع میشه ---
+    treasury_gold: Mapped[int] = mapped_column(Integer, default=0)
+
     members: Mapped[list["User"]] = relationship(back_populates="alliance", foreign_keys="User.alliance_id")
 
 
@@ -405,6 +408,40 @@ class AllianceWar(Base):
     score_b: Mapped[int] = mapped_column(Integer, default=0)
     status: Mapped[str] = mapped_column(String(16), default="active")  # 'active' | 'finished'
     winner_alliance_id: Mapped[int | None] = mapped_column(ForeignKey("alliances.id"), nullable=True)
+
+
+class AllianceGroupAttack(Base):
+    """
+    یک حمله‌ی گروهی سازمان‌دهی‌شده توسط رهبر/افسر اتحاد روی یک هدف مشخص.
+    status: 'gathering' (در حال جمع‌آوری عضو) | 'resolved' | 'cancelled'
+    """
+    __tablename__ = "alliance_group_attacks"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    alliance_id: Mapped[int] = mapped_column(ForeignKey("alliances.id"))
+    leader_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
+    target_user_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
+    status: Mapped[str] = mapped_column(String(16), default="gathering")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    resolved_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+    leader: Mapped["User"] = relationship(foreign_keys=[leader_id])
+    target: Mapped["User"] = relationship(foreign_keys=[target_user_id])
+
+
+class AllianceGroupAttackParticipant(Base):
+    """عضوی که به یه حمله‌ی گروهی پیوسته."""
+    __tablename__ = "alliance_group_attack_participants"
+    __table_args__ = (
+        UniqueConstraint("group_attack_id", "user_id", name="uq_group_attack_participant"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    group_attack_id: Mapped[int] = mapped_column(ForeignKey("alliance_group_attacks.id"))
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
+    joined_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    user: Mapped["User"] = relationship()
 
 
 class ItemType(Base):
