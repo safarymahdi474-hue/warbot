@@ -44,6 +44,14 @@ class Settings:
     PVP_LEVEL_RANGE: int = 3  # فقط بازیکن‌های هم‌سطح (±) قابل حمله‌ان
     PVP_TARGETS_SHOWN: int = 5
 
+    # --- جاسوسی (تنوع‌بخشی نبرد) ---
+    SPY_GOLD_COST: int = 50
+    SPY_ENERGY_COST: int = 5
+    SPY_ERROR_MARGIN_PERCENT: int = 20  # بازه‌ی تخمین ±۲۰٪ حول قدرت واقعیه
+    SPY_DETECTION_CHANCE_PERCENT: int = 25
+    SPY_DETECTED_DEFENSE_BONUS: int = 15
+    SPY_DETECTED_DEFENSE_DURATION_MINUTES: int = 30
+
     # --- ماموریت و جوایز (فاز ۵) ---
     DAILY_CHEST_GOLD_MIN: int = 100
     DAILY_CHEST_GOLD_MAX: int = 400
@@ -83,64 +91,9 @@ class Settings:
     # آیدی عددی تلگرام ادمین‌ها، جدا شده با کاما، مثلا "111111,222222"
     ADMIN_TELEGRAM_IDS: str = os.getenv("ADMIN_TELEGRAM_IDS", "")
 
-    # --- بیانیه ملی (فاز ۱۳) ---
-    # آیدی عددی کانال بیانیه‌ها (کانالی که ربات توش ادمینه). برای کانال‌ها معمولاً
-    # با -100 شروع میشه، مثلا "-1001234567890". اگه خالی/۰ باشه، تایید بیانیه غیرفعاله.
-    STATEMENT_CHANNEL_ID: int = int(os.getenv("STATEMENT_CHANNEL_ID", "0") or "0")
-    STATEMENT_COOLDOWN_HOURS: int = 6  # هر کاربر هر چند ساعت یک‌بار میتونه بیانیه جدید ثبت کنه
-    STATEMENT_MIN_LENGTH: int = 10
-    STATEMENT_MAX_LENGTH: int = 1000
-
-    # --- جاسوسی ---
-    SPY_GOLD_COST: int = 50
-    SPY_ENERGY_COST: int = 5
-    SPY_ERROR_MARGIN_PERCENT: int = 20  # بازه‌ی تخمین ±۲۰٪ حول قدرت واقعیه
-    SPY_DETECTION_CHANCE_PERCENT: int = 25
-    SPY_DETECTED_DEFENSE_BONUS: int = 15
-    SPY_DETECTED_DEFENSE_DURATION_MINUTES: int = 30
-
-    # --- عضویت اجباری (فاز ۱۴) ---
-    # لیست کانال‌های عضویت اجباری، جدا شده با کاما. ربات باید توی همه‌ی این
-    # کانال‌ها ادمین باشه تا بتونه عضویت رو چک کنه. دو فرمت پشتیبانی میشه:
-    #   ۱) کانال عمومی:  @channel_username
-    #   ۲) کانال خصوصی:  -1001234567890|https://t.me/+AbCdEfGhIjKlMnOp
-    #      (chat_id عددی و لینک دعوت با | از هم جدا میشن، چون برای کانال
-    #      خصوصی نمیشه لینک t.me رو خودکار از روی chat_id ساخت)
-    # مثال کامل در .env:
-    #   FORCE_JOIN_CHANNELS=@mychannel,-1001234567890|https://t.me/+AbCdEfGhIjKlMnOp
-    FORCE_JOIN_CHANNELS: str = os.getenv("FORCE_JOIN_CHANNELS", "")
-
     @property
     def admin_ids(self) -> set[int]:
         return {int(x) for x in self.ADMIN_TELEGRAM_IDS.split(",") if x.strip().isdigit()}
-
-    @property
-    def force_join_channels(self) -> list[tuple[str, str]]:
-        """
-        خروجی: لیست (chat_id, invite_url) از روی FORCE_JOIN_CHANNELS.
-        اگه متغیر خالی باشه، لیست خالی برمی‌گرده (فیچر غیرفعال).
-        """
-        result: list[tuple[str, str]] = []
-        raw = self.FORCE_JOIN_CHANNELS.strip()
-        if not raw:
-            return result
-
-        for item in raw.split(","):
-            item = item.strip()
-            if not item:
-                continue
-            if "|" in item:
-                chat_id, url = item.split("|", 1)
-                chat_id, url = chat_id.strip(), url.strip()
-            elif item.startswith("@"):
-                chat_id = item
-                url = f"https://t.me/{item[1:]}"
-            else:
-                # اگه فرمت نامعتبر بود (نه @username و نه chat_id|url)، رد میشه
-                continue
-            if chat_id and url:
-                result.append((chat_id, url))
-        return result
 
 
 settings = Settings()
