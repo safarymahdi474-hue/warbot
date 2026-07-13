@@ -18,6 +18,13 @@ from bot.utils.battle import (
 )
 from bot.utils.missions import record_progress
 from bot.utils.progression import regen_energy
+from bot.utils.pvp_season import (
+    claim_season_reward,
+    current_week_key,
+    get_claimable_season_reward,
+    get_weekly_leaderboard,
+    record_pvp_win,
+)
 from bot.utils.spy import can_spy, perform_spy
 
 router = Router(name="battle")
@@ -32,6 +39,7 @@ def attack_menu_keyboard() -> InlineKeyboardMarkup:
         inline_keyboard=[
             [InlineKeyboardButton(text="🤖 نبرد با ربات (NPC)", callback_data="attack_bot_menu")],
             [InlineKeyboardButton(text="👥 نبرد PvP", callback_data="attack_pvp_menu")],
+            [InlineKeyboardButton(text="📅 رتبه‌بندی هفتگی PvP", callback_data="show_pvp_season")],
             [InlineKeyboardButton(text="📜 گزارش‌های اخیر", callback_data="show_reports")],
         ]
     )
@@ -329,6 +337,7 @@ async def cb_attack_pvp(callback: CallbackQuery) -> None:
         await record_progress(session, attacker, "pvp_battle", 1)
         if report.winner == "attacker":
             await record_progress(session, attacker, "battle_win", 1)
+            await record_pvp_win(session, attacker)
 
         # اگه هر دو عضو اتحادن و اتحادهاشون در جنگن، امتیاز جنگ به برنده اضافه میشه
         war_note = ""
@@ -458,3 +467,85 @@ async def _build_reports_text(telegram_id: int) -> str:
                 f"{r.created_at.strftime('%m/%d %H:%M')}"
             )
         return "\n".join(lines)
+
+
+# ---------------------------------------------------------------------------
+# رتبه‌بندی هفتگی PvP + جایزه‌ی پایان فصل
+# ---------------------------------------------------------------------------
+
+def pvp_season_keyboard(show_claim: bool) -> InlineKeyboardMarkup:
+    rows = []
+    if show_claim:
+        rows.append(
+            [InlineKeyboardButton(text="🎁 دریافت جایزه‌ی هفته‌ی قبل", callback_data="claim_pvp_season")]
+        )
+    rows.append([InlineKeyboardButton(text="🔄 بروزرسانی", callback_data="show_pvp_season")])
+    rows.append([InlineKeyboardButton(text="🔙 بازگشت", callback_data="show_attack_menu")])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+async def _pvp_season_view(telegram_id: int):
+    async with get_session() as session:
+        result = await session.execute(select(User).where(*user_scope(telegram_id)))
+        user = result.scalar_one_or_none()
+        if user is None:
+            return "هنوز ثبت‌نام نکردی! دستور /start رو بزن.", None
+
+        top_scores = await get_weekly_leaderboard(session)
+        claimable = await get_claimable_season_reward(session, user)
+
+    medals = ["🥇", "🥈", "🥉"]
+    lines = [f"📅 <b>رتبه‌بندی هفتگی PvP</b> ({current_week_key()})\n"]
+    if not top_scores:
+        lines.append("هنوز این هفته کسی برد PvP نداشته. اولین نفر باش!")
+    for i, row in enumerate(top_scores):
+        rank_icon = medals[i] if i < 3 else f"{i + 1}."
+        nickname = row.user.nickname if row.user else "؟"
+        lines.append(f"{rank_icon} <b>{nickname}</b> — {row.wins} برد")
+
+    if claimable is not None:
+        rank, _ = claimable
+        lines.append(f"\n🎉 هفته‌ی قبل رتبه‌ی {rank} شدی! جایزه‌ات آماده‌ی دریافته.")
+
+    return "\n".join(lines), pvp_season_keyboard(claimable is not None)
+
+
+@router.message(Command("pvpseason"))
+async def cmd_pvp_season(message: Message) -> None:
+    text, keyboard = await _pvp_season_view(message.from_user.id)
+    await message.answer(text, reply_markup=keyboard, parse_mode="HTML")
+
+
+@router.callback_query(F.data == "show_pvp_season")
+async def cb_pvp_season(callback: CallbackQuery) -> None:
+    text, keyboard = await _pvp_season_view(callback.from_user.id)
+    try:
+        await callback.message.edit_text(text, reply_markup=keyboard, parse_mode="HTML")
+    except Exception:
+        await callback.message.answer(text, reply_markup=keyboard, parse_mode="HTML")
+    await callback.answer()
+
+
+@router.callback_query(F.data == "claim_pvp_season")
+async def cb_claim_pvp_season(callback: CallbackQuery) -> None:
+    async with get_session() as session:
+        result = await session.execute(select(User).where(*user_scope(callback.from_user.id)))
+        user = result.scalar_one_or_none()
+        if user is None:
+            await callback.answer("هنوز ثبت‌نام نکردی!", show_alert=True)
+            return
+
+        outcome = await claim_season_reward(session, user)
+        if isinstance(outcome, str):
+            await callback.answer(outcome, show_alert=True)
+            return
+
+        rank, reward = outcome
+        await session.commit()
+        await callback.answer(f"🎁 {reward['label']}! +{reward['gold']} طلا گرفتی.", show_alert=True)
+
+    text, keyboard = await _pvp_season_view(callback.from_user.id)
+    try:
+        await callback.message.edit_text(text, reply_markup=keyboard, parse_mode="HTML")
+    except Exception:
+        await callback.message.answer(text, reply_markup=keyboard, parse_mode="HTML")
