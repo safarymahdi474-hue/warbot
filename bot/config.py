@@ -69,6 +69,11 @@ class Settings:
     ALLIANCE_CHAT_HISTORY_LIMIT: int = 20
     ALLIANCE_CREATE_COST_GOLD: int = 2000
 
+    # --- حمله‌ی گروهی اتحاد (تنوع‌بخشی نبرد) ---
+    ALLIANCE_GROUP_ATTACK_MIN_PARTICIPANTS: int = 2
+    ALLIANCE_GROUP_ATTACK_TREASURY_CUT_PERCENT: int = 30
+    ALLIANCE_GROUP_ATTACK_MAX_TARGETS_SHOWN: int = 10
+
     # --- صرافی منابع (فروش/خرید آنی با ربات) ---
     EXCHANGE_SELL_PRICE_IRON: int = 8   # هر واحد آهن رو ربات چقدر می‌خره
     EXCHANGE_SELL_PRICE_OIL: int = 10
