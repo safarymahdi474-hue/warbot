@@ -8,7 +8,7 @@ from sqlalchemy import select
 from bot.config import settings
 from bot.database.db import get_session
 from bot.utils.context import room_condition, user_scope
-from bot.database.models import Alliance, AllianceChatMessage, AllianceWar, User
+from bot.database.models import Alliance, AllianceChatMessage, AllianceGroupAttack, AllianceWar, User
 from bot.utils.alliance import (
     create_alliance,
     declare_war,
@@ -16,6 +16,16 @@ from bot.utils.alliance import (
     join_alliance,
     kick_member,
     leave_alliance,
+)
+from bot.utils.alliance_group_attack import (
+    cancel_group_attack,
+    can_manage_group_attack,
+    create_group_attack,
+    find_group_attack_targets,
+    get_active_group_attack,
+    get_participants,
+    join_group_attack,
+    resolve_group_attack,
 )
 
 router = Router(name="alliance")
@@ -30,11 +40,13 @@ class AllianceCreation(StatesGroup):
 # منوی اصلی اتحاد
 # ---------------------------------------------------------------------------
 
-def alliance_menu_keyboard(in_alliance: bool, is_leader: bool) -> InlineKeyboardMarkup:
+def alliance_menu_keyboard(in_alliance: bool, is_leader: bool, is_officer: bool = False) -> InlineKeyboardMarkup:
     rows = []
     if in_alliance:
         rows.append([InlineKeyboardButton(text="🏛️ اتحاد من", callback_data="show_my_alliance")])
         rows.append([InlineKeyboardButton(text="💬 چت اتحاد (۲۰ پیام اخیر)", callback_data="show_alliance_chat")])
+        if is_leader or is_officer:
+            rows.append([InlineKeyboardButton(text="🤝 حمله‌ی گروهی", callback_data="group_attack_menu")])
         if is_leader:
             rows.append([InlineKeyboardButton(text="⚔️ اعلام جنگ", callback_data="declare_war_menu")])
             rows.append([InlineKeyboardButton(text="👢 اخراج عضو", callback_data="kick_menu")])
@@ -42,7 +54,6 @@ def alliance_menu_keyboard(in_alliance: bool, is_leader: bool) -> InlineKeyboard
     else:
         rows.append([InlineKeyboardButton(text="🆕 ساخت اتحاد", callback_data="create_alliance_start")])
         rows.append([InlineKeyboardButton(text="🔍 لیست اتحادها", callback_data="list_alliances")])
-    rows.append([InlineKeyboardButton(text="🔙 منوی اصلی", callback_data="show_main_menu")])
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
@@ -55,12 +66,13 @@ async def _menu_view(telegram_id: int) -> tuple[str, InlineKeyboardMarkup]:
 
         in_alliance = user.alliance_id is not None
         is_leader = user.alliance_role == "leader"
+        is_officer = user.alliance_role == "officer"
 
     text = "🏛️ <b>اتحاد</b>\n\n" + (
         "تو عضو یک اتحادی. از دکمه‌های زیر استفاده کن:" if in_alliance
         else f"هنوز عضو هیچ اتحادی نیستی.\nساخت اتحاد {settings.ALLIANCE_CREATE_COST_GOLD} طلا هزینه داره."
     )
-    return text, alliance_menu_keyboard(in_alliance, is_leader)
+    return text, alliance_menu_keyboard(in_alliance, is_leader, is_officer)
 
 
 @router.message(Command("alliance"))
@@ -230,7 +242,8 @@ async def cb_my_alliance(callback: CallbackQuery) -> None:
 
         role_icon = {"leader": "👑", "officer": "⭐", "member": "👤"}
         lines = [f"🏛️ <b>[{alliance.tag}] {alliance.name}</b>", f"{alliance.description or 'بدون توضیحات'}\n"]
-        lines.append(f"👥 اعضا ({len(members)}/{alliance.member_limit}):")
+        lines.append(f"💰 صندوق اتحاد: {alliance.treasury_gold} طلا")
+        lines.append(f"\n👥 اعضا ({len(members)}/{alliance.member_limit}):")
         for m in members:
             icon = role_icon.get(m.alliance_role, "👤")
             lines.append(f"  {icon} {m.nickname} (لول {m.level})")
@@ -247,7 +260,9 @@ async def cb_my_alliance(callback: CallbackQuery) -> None:
         text = "\n".join(lines)
 
     await callback.message.edit_text(
-        text, reply_markup=alliance_menu_keyboard(True, user.alliance_role == "leader"), parse_mode="HTML"
+        text,
+        reply_markup=alliance_menu_keyboard(True, user.alliance_role == "leader", user.alliance_role == "officer"),
+        parse_mode="HTML",
     )
     await callback.answer()
 
@@ -361,7 +376,7 @@ async def cb_alliance_chat(callback: CallbackQuery) -> None:
 
     await callback.message.edit_text(
         "\n".join(lines),
-        reply_markup=alliance_menu_keyboard(True, user.alliance_role == "leader"),
+        reply_markup=alliance_menu_keyboard(True, user.alliance_role == "leader", user.alliance_role == "officer"),
         parse_mode="HTML",
     )
     await callback.answer()
@@ -465,3 +480,255 @@ async def cb_do_declare_war(callback: CallbackQuery) -> None:
         )
 
     await cb_my_alliance(callback)
+
+
+# ---------------------------------------------------------------------------
+# حمله‌ی گروهی اتحاد
+# ---------------------------------------------------------------------------
+
+def group_attack_status_keyboard(attack_id: int, is_leader_or_officer: bool, already_joined: bool) -> InlineKeyboardMarkup:
+    rows = []
+    if not already_joined:
+        rows.append([InlineKeyboardButton(text="🤝 پیوستن به حمله", callback_data=f"ga_join:{attack_id}")])
+    if is_leader_or_officer:
+        rows.append([InlineKeyboardButton(text="🚀 شروع حمله", callback_data=f"ga_start:{attack_id}")])
+        rows.append([InlineKeyboardButton(text="❌ لغو حمله", callback_data=f"ga_cancel:{attack_id}")])
+    rows.append([InlineKeyboardButton(text="🔄 بروزرسانی", callback_data="group_attack_menu")])
+    rows.append([InlineKeyboardButton(text="🔙 بازگشت", callback_data="show_my_alliance")])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+async def _group_attack_status_view(telegram_id: int, attack: AllianceGroupAttack):
+    async with get_session() as session:
+        result = await session.execute(select(User).where(*user_scope(telegram_id)))
+        user = result.scalar_one_or_none()
+        participants = await get_participants(session, attack)
+        target = await session.get(User, attack.target_user_id)
+
+    already_joined = any(p.id == user.id for p in participants)
+    is_leader_or_officer = user.alliance_role in ("leader", "officer")
+
+    lines = [
+        "🤝 <b>حمله‌ی گروهی در حال جمع‌آوری عضو</b>\n",
+        f"🎯 هدف: {target.nickname if target else 'نامشخص'} (لول {target.level if target else '?'})",
+        f"👥 شرکت‌کننده‌ها ({len(participants)}):",
+    ]
+    lines += [f"  • {p.nickname}" for p in participants]
+    lines.append(
+        f"\nحداقل {settings.ALLIANCE_GROUP_ATTACK_MIN_PARTICIPANTS} نفر لازمه تا شروع بشه."
+    )
+    text = "\n".join(lines)
+    keyboard = group_attack_status_keyboard(attack.id, is_leader_or_officer, already_joined)
+    return text, keyboard
+
+
+@router.callback_query(F.data == "group_attack_menu")
+async def cb_group_attack_menu(callback: CallbackQuery) -> None:
+    async with get_session() as session:
+        result = await session.execute(select(User).where(*user_scope(callback.from_user.id)))
+        user = result.scalar_one_or_none()
+        if user is None:
+            await callback.answer("هنوز ثبت‌نام نکردی!", show_alert=True)
+            return
+
+        error = can_manage_group_attack(user)
+        if error:
+            await callback.answer(error, show_alert=True)
+            return
+
+        active_attack = await get_active_group_attack(session, user.alliance_id)
+        if active_attack is not None:
+            text, keyboard = await _group_attack_status_view(callback.from_user.id, active_attack)
+            await callback.message.edit_text(text, reply_markup=keyboard, parse_mode="HTML")
+            await callback.answer()
+            return
+
+        targets = await find_group_attack_targets(session, user.alliance_id, user.id)
+
+    rows = [
+        [InlineKeyboardButton(text=f"🎯 {t.nickname} (لول {t.level})", callback_data=f"ga_pick:{t.id}")]
+        for t in targets
+    ]
+    rows.append([InlineKeyboardButton(text="🔙 بازگشت", callback_data="show_my_alliance")])
+
+    if not targets:
+        await callback.message.edit_text(
+            "هیچ هدف مناسبی توی این گروه/چت پیدا نشد.", reply_markup=InlineKeyboardMarkup(inline_keyboard=rows)
+        )
+    else:
+        await callback.message.edit_text(
+            "🤝 به کدوم بازیکن حمله‌ی گروهی بزنیم؟", reply_markup=InlineKeyboardMarkup(inline_keyboard=rows)
+        )
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("ga_pick:"))
+async def cb_group_attack_pick(callback: CallbackQuery) -> None:
+    target_id = int(callback.data.split(":")[1])
+
+    async with get_session() as session:
+        result = await session.execute(select(User).where(*user_scope(callback.from_user.id)))
+        leader = result.scalar_one_or_none()
+        if leader is None:
+            await callback.answer("هنوز ثبت‌نام نکردی!", show_alert=True)
+            return
+
+        target = await session.get(User, target_id)
+        if target is None:
+            await callback.answer("این بازیکن دیگه در دسترس نیست.", show_alert=True)
+            return
+
+        attack = await create_group_attack(session, leader, target)
+        if isinstance(attack, str):
+            await callback.answer(attack, show_alert=True)
+            return
+
+        await session.commit()
+
+        result = await session.execute(
+            select(User).where(User.alliance_id == leader.alliance_id, User.id != leader.id)
+        )
+        other_members = list(result.scalars().all())
+        leader_nickname = leader.nickname
+        target_nickname = target.nickname
+        attack_id = attack.id
+
+    broadcast_text = (
+        f"🤝 <b>{leader_nickname}</b> یه حمله‌ی گروهی روی <b>{target_nickname}</b> سازمان داد!\n"
+        f"برای پیوستن، /alliance رو بزن و برو تو «🤝 حمله‌ی گروهی»."
+    )
+    for member in other_members:
+        if not member.notifications_enabled:
+            continue
+        try:
+            await callback.bot.send_message(member.telegram_id, broadcast_text, parse_mode="HTML")
+        except Exception:
+            pass
+
+    async with get_session() as session2:
+        active_attack = await session2.get(AllianceGroupAttack, attack_id)
+        text, keyboard = await _group_attack_status_view(callback.from_user.id, active_attack)
+
+    await callback.message.edit_text(text, reply_markup=keyboard, parse_mode="HTML")
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("ga_join:"))
+async def cb_group_attack_join(callback: CallbackQuery) -> None:
+    attack_id = int(callback.data.split(":")[1])
+
+    async with get_session() as session:
+        result = await session.execute(select(User).where(*user_scope(callback.from_user.id)))
+        user = result.scalar_one_or_none()
+        if user is None:
+            await callback.answer("هنوز ثبت‌نام نکردی!", show_alert=True)
+            return
+
+        attack = await session.get(AllianceGroupAttack, attack_id)
+        if attack is None:
+            await callback.answer("این حمله دیگه پیدا نشد.", show_alert=True)
+            return
+
+        error = await join_group_attack(session, user, attack)
+        if error:
+            await callback.answer(error, show_alert=True)
+            return
+
+        await session.commit()
+        await callback.answer("✅ به حمله‌ی گروهی پیوستی!", show_alert=True)
+
+        text, keyboard = await _group_attack_status_view(callback.from_user.id, attack)
+
+    await callback.message.edit_text(text, reply_markup=keyboard, parse_mode="HTML")
+
+
+@router.callback_query(F.data.startswith("ga_cancel:"))
+async def cb_group_attack_cancel(callback: CallbackQuery) -> None:
+    attack_id = int(callback.data.split(":")[1])
+
+    async with get_session() as session:
+        result = await session.execute(select(User).where(*user_scope(callback.from_user.id)))
+        user = result.scalar_one_or_none()
+        if user is None:
+            await callback.answer("هنوز ثبت‌نام نکردی!", show_alert=True)
+            return
+
+        attack = await session.get(AllianceGroupAttack, attack_id)
+        if attack is None:
+            await callback.answer("این حمله دیگه پیدا نشد.", show_alert=True)
+            return
+
+        error = await cancel_group_attack(session, user, attack)
+        if error:
+            await callback.answer(error, show_alert=True)
+            return
+
+        await session.commit()
+        await callback.answer("❌ حمله لغو شد.", show_alert=True)
+
+    await cb_my_alliance(callback)
+
+
+@router.callback_query(F.data.startswith("ga_start:"))
+async def cb_group_attack_start(callback: CallbackQuery) -> None:
+    attack_id = int(callback.data.split(":")[1])
+
+    async with get_session() as session:
+        result = await session.execute(select(User).where(*user_scope(callback.from_user.id)))
+        user = result.scalar_one_or_none()
+        if user is None:
+            await callback.answer("هنوز ثبت‌نام نکردی!", show_alert=True)
+            return
+        if user.alliance_role not in ("leader", "officer"):
+            await callback.answer("فقط رهبر یا افسر می‌تونه حمله رو شروع کنه.", show_alert=True)
+            return
+
+        attack = await session.get(AllianceGroupAttack, attack_id)
+        if attack is None:
+            await callback.answer("این حمله دیگه پیدا نشد.", show_alert=True)
+            return
+
+        result_data = await resolve_group_attack(session, attack)
+        if isinstance(result_data, str):
+            await callback.answer(result_data, show_alert=True)
+            return
+
+        await session.commit()
+
+        result = await session.execute(select(User).where(User.alliance_id == user.alliance_id))
+        all_members = list(result.scalars().all())
+
+    header = "🎉 <b>حمله‌ی گروهی موفق بود!</b>" if result_data["attackers_won"] else "💥 <b>حمله‌ی گروهی شکست خورد!</b>"
+    lines = [
+        header,
+        f"🎯 هدف: {result_data['target_nickname']}",
+        f"⚔️ قدرت مجموع تیم: {result_data['total_attack_power']} | 🛡️ قدرت هدف: {result_data['target_power']}",
+        f"👥 تعداد شرکت‌کننده: {result_data['participant_count']}",
+        f"💀 نیروی از دست‌رفته‌ی هدف: {result_data['target_units_lost']}",
+    ]
+    if result_data["attackers_won"]:
+        loot = result_data["loot"]
+        loot_parts = [f"💰{loot['gold']}"]
+        if loot["iron"]:
+            loot_parts.append(f"⛏️{loot['iron']}")
+        if loot["oil"]:
+            loot_parts.append(f"🛢️{loot['oil']}")
+        if loot["food"]:
+            loot_parts.append(f"🌾{loot['food']}")
+        lines.append("🏴‍☠️ کل غارت: " + " ".join(loot_parts))
+        lines.append(f"🏦 سهم صندوق اتحاد: 💰{result_data['treasury_gold_share']}")
+        lines.append(f"💰 سهم هر شرکت‌کننده: 💰{result_data['per_participant_gold']}")
+    if result_data["war_score_added"]:
+        lines.append("\n⚔️ این حمله به امتیاز جنگ اتحادتون اضافه شد!")
+
+    broadcast_text = "\n".join(lines)
+    for member in all_members:
+        if not member.notifications_enabled:
+            continue
+        try:
+            await callback.bot.send_message(member.telegram_id, broadcast_text, parse_mode="HTML")
+        except Exception:
+            pass
+
+    await callback.message.edit_text(broadcast_text, parse_mode="HTML")
+    await callback.answer()
