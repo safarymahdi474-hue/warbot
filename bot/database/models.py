@@ -298,6 +298,7 @@ class BattleReport(Base):
     attacker: Mapped["User"] = relationship(foreign_keys=[attacker_id])
     defender: Mapped["User"] = relationship(foreign_keys=[defender_id])
 
+
 class PvpSeasonScore(Base):
     """
     شمارش پیروزی‌های PvP هر کاربر در یک بازه‌ی هفتگی (period_key مثل '2026-W28').
@@ -314,6 +315,7 @@ class PvpSeasonScore(Base):
     reward_claimed: Mapped[bool] = mapped_column(Boolean, default=False)
 
     user: Mapped["User"] = relationship()
+
 
 class MissionType(Base):
     """
@@ -615,31 +617,3 @@ class BannedTelegramUser(Base):
     reason: Mapped[str] = mapped_column(String(256), default="")
     banned_by: Mapped[int] = mapped_column(BigInteger)
     banned_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
-
-
-class CountryStatement(Base):
-    """
-    بیانیه رسمی که یک کاربر به نمایندگی از کشور خودش ثبت می‌کنه (فاز ۱۳).
-    هر کاربری که یک کشور رو انتخاب کرده باشه می‌تونه براش بیانیه بده. بعد از
-    تایید ادمین، متن بیانیه توسط ربات در کانال بیانیه‌ها (STATEMENT_CHANNEL_ID)
-    منتشر میشه. status: 'pending' | 'approved' | 'rejected'.
-    """
-    __tablename__ = "country_statements"
-
-    id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
-    country_id: Mapped[int] = mapped_column(ForeignKey("countries.id"))
-    room_id: Mapped[int | None] = mapped_column(ForeignKey("rooms.id"), nullable=True)
-
-    text: Mapped[str] = mapped_column(String(1000))
-    status: Mapped[str] = mapped_column(String(16), default="pending")
-
-    reviewed_by_telegram_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
-    reject_reason: Mapped[str | None] = mapped_column(String(256), nullable=True)
-    channel_message_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
-
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
-    reviewed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
-
-    user: Mapped["User"] = relationship()
-    country: Mapped["Country"] = relationship()
