@@ -5,8 +5,9 @@ from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 
 from bot.database.db import get_session
-from bot.utils.context import user_scope
+from bot.utils.context import current_room, user_scope
 from bot.database.models import User, UserBuilding
+from bot.utils.global_events import get_active_events, get_oil_production_multiplier
 from bot.utils.resources import collect_production, finish_ready_upgrades, recalculate_storage_caps
 
 router = Router(name="resources")
@@ -28,7 +29,7 @@ def resources_keyboard() -> InlineKeyboardMarkup:
     )
 
 
-def build_resources_text(user: User, gained: dict[str, int]) -> str:
+def build_resources_text(user: User, gained: dict[str, int], active_event_labels: list[str]) -> str:
     lines = ["📦 <b>منابع تو</b>\n"]
     lines.append(f"💰 طلا: {user.gold}")
     lines.append(f"🌾 غذا: {user.food}/{user.max_food}\n{bar(user.food, user.max_food)}")
@@ -44,6 +45,9 @@ def build_resources_text(user: User, gained: dict[str, int]) -> str:
         if gained.get("oil"):
             gained_parts.append(f"🛢️+{gained['oil']}")
         lines.append("\n✨ از آخرین بازدید: " + " | ".join(gained_parts))
+
+    if active_event_labels:
+        lines.append("\n" + " | ".join(active_event_labels))
 
     return "\n\n".join(lines)
 
@@ -62,12 +66,20 @@ async def _get_resources_text(telegram_id: int) -> str:
         )
         user_buildings = list(result.scalars().all())
 
+        oil_multiplier = await get_oil_production_multiplier(session, current_room())
+        active_events = await get_active_events(session, current_room())
+        event_labels = []
+        if any(e.event_type == "sandstorm" for e in active_events):
+            event_labels.append("🌪️ توفان شن فعاله (تولید نفت کمتره)")
+        if any(e.event_type == "war_season" for e in active_events):
+            event_labels.append("⚔️ فصل جنگه (XP نبرد دوبرابره)")
+
         finish_ready_upgrades(user_buildings)
         recalculate_storage_caps(user, user_buildings)
-        gained = collect_production(user, user_buildings)
+        gained = collect_production(user, user_buildings, oil_multiplier)
         await session.commit()
 
-        return build_resources_text(user, gained)
+        return build_resources_text(user, gained, event_labels)
 
 
 @router.message(Command("resources"))
