@@ -123,6 +123,31 @@ class User(Base):
     room_id: Mapped[int | None] = mapped_column(ForeignKey("rooms.id"), nullable=True)
     room: Mapped["Room"] = relationship()
 
+class CountryStatement(Base):
+    """
+    بیانیه‌ی رسمی که یک کاربر به نمایندگی از کشورش ثبت می‌کنه. اول pending
+    میشه، بعد از تایید/رد ادمین وضعیتش عوض میشه و در صورت تایید در کانال
+    STATEMENT_CHANNEL_ID منتشر میشه.
+    """
+    __tablename__ = "country_statements"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
+    country_id: Mapped[int] = mapped_column(ForeignKey("countries.id"))
+    room_id: Mapped[int | None] = mapped_column(ForeignKey("rooms.id"), nullable=True)
+
+    text: Mapped[str] = mapped_column(String(2000))
+    status: Mapped[str] = mapped_column(String(16), default="pending")  # 'pending'|'approved'|'rejected'
+
+    reviewed_by_telegram_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    reviewed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    channel_message_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    reject_reason: Mapped[str | None] = mapped_column(String(256), nullable=True)
+
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    user: Mapped["User"] = relationship()
+    country: Mapped["Country"] = relationship()
 
 class BuildingType(Base):
     """
