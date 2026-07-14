@@ -113,5 +113,24 @@ class Settings:
     def admin_ids(self) -> set[int]:
         return {int(x) for x in self.ADMIN_TELEGRAM_IDS.split(",") if x.strip().isdigit()}
 
+    # --- عضویت اجباری در کانال (فاز ۱۲) ---
+    # فرمت: "chat_id1|invite_url1,chat_id2|invite_url2"
+    # مثال: "@mychannel|https://t.me/mychannel,-1001234567890|https://t.me/+abcdef"
+    # اگه خالی باشه، فیچر عضویت اجباری غیرفعاله.
+    FORCE_JOIN_CHANNELS_RAW: str = os.getenv("FORCE_JOIN_CHANNELS", "")
+
+    @property
+    def force_join_channels(self) -> list[tuple[int | str, str]]:
+        channels: list[tuple[int | str, str]] = []
+        for item in self.FORCE_JOIN_CHANNELS_RAW.split(","):
+            item = item.strip()
+            if not item or "|" not in item:
+                continue
+            raw_chat_id, url = item.split("|", 1)
+            raw_chat_id = raw_chat_id.strip()
+            chat_id: int | str = int(raw_chat_id) if raw_chat_id.lstrip("-").isdigit() else raw_chat_id
+            channels.append((chat_id, url.strip()))
+        return channels
+
 
 settings = Settings()
