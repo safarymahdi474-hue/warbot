@@ -74,6 +74,13 @@ class Settings:
     ALLIANCE_GROUP_ATTACK_TREASURY_CUT_PERCENT: int = 30
     ALLIANCE_GROUP_ATTACK_MAX_TARGETS_SHOWN: int = 10
 
+    # --- رویدادهای سراسری (تنوع‌بخشی نبرد) ---
+    GLOBAL_EVENT_TRIGGER_CHANCE_PERCENT: float = 2.0  # هر بار میدلور روم اجرا میشه، این‌قدر شانس رویداد جدید هست
+    SANDSTORM_DURATION_HOURS: int = 24
+    SANDSTORM_OIL_MULTIPLIER: float = 0.5
+    WAR_SEASON_DURATION_HOURS: int = 48
+    WAR_SEASON_XP_MULTIPLIER: float = 2.0
+
     # --- صرافی منابع (فروش/خرید آنی با ربات) ---
     EXCHANGE_SELL_PRICE_IRON: int = 8   # هر واحد آهن رو ربات چقدر می‌خره
     EXCHANGE_SELL_PRICE_OIL: int = 10
@@ -87,6 +94,12 @@ class Settings:
     AUCTION_DEFAULT_DURATION_HOURS: int = 24
     AUCTION_MIN_BID_INCREMENT_PERCENT: int = 5
 
+    # --- بیانیه ملی ---
+    STATEMENT_MIN_LENGTH: int = 20
+    STATEMENT_MAX_LENGTH: int = 500
+    STATEMENT_COOLDOWN_HOURS: int = 12
+    STATEMENT_CHANNEL_ID: str = os.getenv("STATEMENT_CHANNEL_ID", "")
+
     # --- رفرال و دستاورد (فاز ۸) ---
     REFERRAL_MILESTONE_LEVEL: int = 5
     REFERRAL_MILESTONE_GOLD: int = 500
@@ -96,30 +109,9 @@ class Settings:
     # آیدی عددی تلگرام ادمین‌ها، جدا شده با کاما، مثلا "111111,222222"
     ADMIN_TELEGRAM_IDS: str = os.getenv("ADMIN_TELEGRAM_IDS", "")
 
-    # --- بیانیه ملی ---
-    STATEMENT_MIN_LENGTH: int = 20
-    STATEMENT_MAX_LENGTH: int = 500
-    STATEMENT_COOLDOWN_HOURS: int = 12
-    STATEMENT_CHANNEL_ID: str = os.getenv("STATEMENT_CHANNEL_ID", "")
-
-    # --- عضویت اجباری در کانال (اختیاری) ---
-    # فرمت .env: FORCE_JOIN_CHANNELS="-1001111111111|https://t.me/chan1,-1002222222222|https://t.me/chan2"
-    FORCE_JOIN_CHANNELS: str = os.getenv("FORCE_JOIN_CHANNELS", "")
-
-    @property
-    def force_join_channels(self) -> list[tuple[str, str]]:
-        channels = []
-        for entry in self.FORCE_JOIN_CHANNELS.split(","):
-            entry = entry.strip()
-            if not entry or "|" not in entry:
-                continue
-            chat_id, url = entry.split("|", 1)
-            channels.append((chat_id.strip(), url.strip()))
-        return channels
-
     @property
     def admin_ids(self) -> set[int]:
         return {int(x) for x in self.ADMIN_TELEGRAM_IDS.split(",") if x.strip().isdigit()}
 
 
-settings = Settings()
+settings = Settings() 
