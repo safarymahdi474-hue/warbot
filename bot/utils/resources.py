@@ -80,10 +80,13 @@ def recalculate_storage_caps(user: User, user_buildings: list[UserBuilding]) -> 
     user.max_oil = settings.BASE_RESOURCE_STORAGE + bonus
 
 
-def collect_production(user: User, user_buildings: list[UserBuilding]) -> dict[str, int]:
+def collect_production(
+    user: User, user_buildings: list[UserBuilding], oil_multiplier: float = 1.0
+) -> dict[str, int]:
     """
     از آخرین باری که جمع‌آوری شده تا الان، بر اساس لول ساختمون‌ها منبع تولید می‌کنه
     (تا سقف ظرفیت انبار). خروجی: مقدار هرمنبعی که همین الان اضافه شد.
+    oil_multiplier: ضریب رویداد سراسری «توفان شن» - در حالت عادی ۱.۰ هست.
     """
     now = datetime.utcnow()
     hours_passed = (now - user.last_resource_collect).total_seconds() / 3600
@@ -95,6 +98,8 @@ def collect_production(user: User, user_buildings: list[UserBuilding]) -> dict[s
             if bt.produces is None or ub.level <= 0:
                 continue
             amount = int(bt.base_production_per_hour * ub.level * hours_passed)
+            if bt.produces == "oil":
+                amount = int(amount * oil_multiplier)
             if amount <= 0:
                 continue
 
