@@ -16,6 +16,7 @@ from bot.database.models import (
 from bot.utils.alliance import add_war_score, get_active_war_between
 from bot.utils.battle import compute_power, destroy_units, load_combat_units_and_research
 from bot.utils.context import current_room, room_condition
+from bot.utils.global_events import get_xp_multiplier
 from bot.utils.items import get_active_boost_percent
 from bot.utils.progression import add_xp
 
@@ -197,6 +198,8 @@ async def resolve_group_attack(session: AsyncSession, attack: AllianceGroupAttac
             alliance.treasury_gold += treasury_gold_share
 
     xp_per_participant = (60 + target.level * 5) if attackers_won else 15
+    xp_multiplier = await get_xp_multiplier(session, current_room())
+    xp_per_participant = int(xp_per_participant * xp_multiplier)
 
     results = []
     for data in participant_data:
