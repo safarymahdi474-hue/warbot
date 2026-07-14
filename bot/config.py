@@ -96,6 +96,27 @@ class Settings:
     # آیدی عددی تلگرام ادمین‌ها، جدا شده با کاما، مثلا "111111,222222"
     ADMIN_TELEGRAM_IDS: str = os.getenv("ADMIN_TELEGRAM_IDS", "")
 
+    # --- بیانیه ملی ---
+    STATEMENT_MIN_LENGTH: int = 20
+    STATEMENT_MAX_LENGTH: int = 500
+    STATEMENT_COOLDOWN_HOURS: int = 12
+    STATEMENT_CHANNEL_ID: str = os.getenv("STATEMENT_CHANNEL_ID", "")
+
+    # --- عضویت اجباری در کانال (اختیاری) ---
+    # فرمت .env: FORCE_JOIN_CHANNELS="-1001111111111|https://t.me/chan1,-1002222222222|https://t.me/chan2"
+    FORCE_JOIN_CHANNELS: str = os.getenv("FORCE_JOIN_CHANNELS", "")
+
+    @property
+    def force_join_channels(self) -> list[tuple[str, str]]:
+        channels = []
+        for entry in self.FORCE_JOIN_CHANNELS.split(","):
+            entry = entry.strip()
+            if not entry or "|" not in entry:
+                continue
+            chat_id, url = entry.split("|", 1)
+            channels.append((chat_id.strip(), url.strip()))
+        return channels
+
     @property
     def admin_ids(self) -> set[int]:
         return {int(x) for x in self.ADMIN_TELEGRAM_IDS.split(",") if x.strip().isdigit()}
