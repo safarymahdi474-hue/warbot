@@ -5,9 +5,10 @@ from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 
 from bot.database.db import get_session
-from bot.utils.context import user_scope
+from bot.utils.context import current_room, user_scope
 from bot.database.models import BuildingType, User, UserBuilding
 from bot.keyboards.menus import buildings_keyboard
+from bot.utils.global_events import get_oil_production_multiplier
 from bot.utils.missions import record_progress
 from bot.utils.resources import (
     collect_production,
@@ -37,9 +38,10 @@ async def _load_user_and_buildings(session, telegram_id: int):
 
 async def _sync(session, user: User, user_buildings: list[UserBuilding]) -> None:
     """ارتقاهای تموم‌شده رو اعمال، سقف انبار رو حساب و تولید منابع رو جمع می‌کنه."""
+    oil_multiplier = await get_oil_production_multiplier(session, current_room())
     finish_ready_upgrades(user_buildings)
     recalculate_storage_caps(user, user_buildings)
-    collect_production(user, user_buildings)
+    collect_production(user, user_buildings, oil_multiplier)
     await session.commit()
 
 
