@@ -114,4 +114,4 @@ class Settings:
         return {int(x) for x in self.ADMIN_TELEGRAM_IDS.split(",") if x.strip().isdigit()}
 
 
-settings = Settings() 
+settings = Settings()
