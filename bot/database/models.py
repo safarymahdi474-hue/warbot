@@ -123,11 +123,11 @@ class User(Base):
     room_id: Mapped[int | None] = mapped_column(ForeignKey("rooms.id"), nullable=True)
     room: Mapped["Room"] = relationship()
 
+
 class CountryStatement(Base):
     """
-    بیانیه‌ی رسمی که یک کاربر به نمایندگی از کشورش ثبت می‌کنه. اول pending
-    میشه، بعد از تایید/رد ادمین وضعیتش عوض میشه و در صورت تایید در کانال
-    STATEMENT_CHANNEL_ID منتشر میشه.
+    بیانیه‌ی رسمی که یک کاربر به نمایندگی از کشور انتخابیش ثبت می‌کنه.
+    status: 'pending' (در انتظار بررسی ادمین) | 'approved' | 'rejected'
     """
     __tablename__ = "country_statements"
 
@@ -135,19 +135,15 @@ class CountryStatement(Base):
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
     country_id: Mapped[int] = mapped_column(ForeignKey("countries.id"))
     room_id: Mapped[int | None] = mapped_column(ForeignKey("rooms.id"), nullable=True)
-
-    text: Mapped[str] = mapped_column(String(2000))
-    status: Mapped[str] = mapped_column(String(16), default="pending")  # 'pending'|'approved'|'rejected'
+    text: Mapped[str] = mapped_column(String(500))
+    status: Mapped[str] = mapped_column(String(16), default="pending")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
     reviewed_by_telegram_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
     reviewed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     channel_message_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
     reject_reason: Mapped[str | None] = mapped_column(String(256), nullable=True)
 
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
-
-    user: Mapped["User"] = relationship()
-    country: Mapped["Country"] = relationship()
 
 class BuildingType(Base):
     """
@@ -668,6 +664,22 @@ class Room(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
 
+class GlobalEvent(Base):
+    """
+    رویداد سراسری روی یک روم خاص (مثل توفان شن یا فصل جنگ) - نه یک نبرد
+    مشخص. چون کرون‌جاب نداریم، شروعش با شانس تصادفی داخل RoomContextMiddleware
+    چک میشه؛ اثرش هم با چک کردن ends_at در لحظه‌ی مصرف (تولید منابع/محاسبه‌ی XP)
+    اعمال میشه، نه با یه پردازش پس‌زمینه.
+    """
+    __tablename__ = "global_events"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    room_id: Mapped[int | None] = mapped_column(ForeignKey("rooms.id"), nullable=True)
+    event_type: Mapped[str] = mapped_column(String(32))
+    starts_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    ends_at: Mapped[datetime] = mapped_column(DateTime)
+
+
 class BannedTelegramUser(Base):
     """
     بن سراسری روی خود شخص تلگرامی (نه یک پروفایل خاص در یک روم)، چون فرد
@@ -679,84 +691,3 @@ class BannedTelegramUser(Base):
     reason: Mapped[str] = mapped_column(String(256), default="")
     banned_by: Mapped[int] = mapped_column(BigInteger)
     banned_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
-
-import random
-from datetime import datetime, timedelta
-
-from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
-
-from bot.config import settings
-from bot.database.models import GlobalEvent
-
-# ---------------------------------------------------------------------------
-# تعریف رویدادهای سراسری (نه فقط یک نبرد خاص - روی کل یک "روم" اثر می‌ذارن)
-# ---------------------------------------------------------------------------
-GLOBAL_EVENT_DEFS = {
-    "sandstorm": {
-        "label": "🌪️ توفان شن",
-        "duration_hours": settings.SANDSTORM_DURATION_HOURS,
-        "announcement": (
-            "🌪️ <b>توفان شن شروع شد!</b>\n"
-            f"به مدت {settings.SANDSTORM_DURATION_HOURS} ساعت، تولید نفت همه‌ی اعضای این فضای بازی افت می‌کنه."
-        ),
-    },
-    "war_season": {
-        "label": "⚔️ فصل جنگ",
-        "duration_hours": settings.WAR_SEASON_DURATION_HOURS,
-        "announcement": (
-            "⚔️ <b>فصل جنگ شروع شد!</b>\n"
-            f"به مدت {settings.WAR_SEASON_DURATION_HOURS} ساعت، XP همه‌ی نبردها (با ربات و PvP) دوبرابر میشه."
-        ),
-    },
-}
-
-
-async def get_active_events(session: AsyncSession, room_id: int | None) -> list[GlobalEvent]:
-    now = datetime.utcnow()
-    result = await session.execute(
-        select(GlobalEvent).where(GlobalEvent.room_id == room_id, GlobalEvent.ends_at > now)
-    )
-    return list(result.scalars().all())
-
-
-async def get_oil_production_multiplier(session: AsyncSession, room_id: int | None) -> float:
-    events = await get_active_events(session, room_id)
-    if any(e.event_type == "sandstorm" for e in events):
-        return settings.SANDSTORM_OIL_MULTIPLIER
-    return 1.0
-
-
-async def get_xp_multiplier(session: AsyncSession, room_id: int | None) -> float:
-    events = await get_active_events(session, room_id)
-    if any(e.event_type == "war_season" for e in events):
-        return settings.WAR_SEASON_XP_MULTIPLIER
-    return 1.0
-
-
-async def maybe_trigger_global_event(session: AsyncSession, room_id: int | None) -> GlobalEvent | None:
-    """
-    شانس کمی برای شروع یه رویداد سراسری جدید توی این روم (اگه از قبل هیچ
-    رویداد فعالی نباشه). خروجی: GlobalEvent در صورت شروع رویداد جدید، وگرنه None.
-    """
-    if random.random() > (settings.GLOBAL_EVENT_TRIGGER_CHANCE_PERCENT / 100):
-        return None
-
-    existing = await get_active_events(session, room_id)
-    if existing:
-        return None
-
-    event_type = random.choice(list(GLOBAL_EVENT_DEFS.keys()))
-    definition = GLOBAL_EVENT_DEFS[event_type]
-    event = GlobalEvent(
-        room_id=room_id,
-        event_type=event_type,
-        ends_at=datetime.utcnow() + timedelta(hours=definition["duration_hours"]),
-    )
-    session.add(event)
-    await session.flush()
-    return event
-
-
-def build_announcement(event: GlobalEvent) -> str:
-    return GLOBAL_EVENT_DEFS[event.event_type]["announcement"]
