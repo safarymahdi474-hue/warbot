@@ -7,6 +7,7 @@ from bot.config import settings
 from bot.database.models import ActiveBoost, User
 from bot.utils.battle import compute_power, load_combat_units_and_research
 from bot.utils.items import get_active_boost_percent
+from bot.utils.military import get_bonus_percent
 
 
 def can_spy(user: User) -> str | None:
@@ -39,7 +40,9 @@ async def perform_spy(session: AsyncSession, spy_user: User, target: User) -> di
     low = max(0, int(real_power * (1 - margin)))
     high = int(real_power * (1 + margin))
 
-    detected = random.random() < (settings.SPY_DETECTION_CHANCE_PERCENT / 100)
+    counter_espionage = get_bonus_percent(target_research, "spy_detection_reduction_percent")
+    effective_detection_chance = settings.SPY_DETECTION_CHANCE_PERCENT * max(0.0, 1 - counter_espionage / 100)
+    detected = random.random() < (effective_detection_chance / 100)
     if detected:
         session.add(
             ActiveBoost(
