@@ -680,6 +680,17 @@ class GlobalEvent(Base):
     ends_at: Mapped[datetime] = mapped_column(DateTime)
 
 
+class GameSetting(Base):
+    """
+    تنظیمات سراسری که ادمین می‌تونه در لحظه (بدون نیاز به ری‌دیپلوی) از پنل
+    مدیریت تغییرش بده. مثال: خاموش/روشن کردن امکان اعلام جنگ جدید بین اتحادها.
+    """
+    __tablename__ = "game_settings"
+
+    key: Mapped[str] = mapped_column(String(64), primary_key=True)
+    value: Mapped[str] = mapped_column(String(256), default="")
+
+
 class BannedTelegramUser(Base):
     """
     بن سراسری روی خود شخص تلگرامی (نه یک پروفایل خاص در یک روم)، چون فرد
