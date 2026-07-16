@@ -18,6 +18,7 @@ from bot.utils.admin import (
     unban_user,
 )
 from bot.utils.game_settings import are_wars_enabled, set_wars_enabled
+from bot.utils.referral import get_referral_leaderboard
 
 router = Router(name="admin")
 
@@ -53,7 +54,8 @@ def admin_panel_text(wars_enabled: bool) -> str:
         "/broadcast متن — پیام همگانی به همه کاربران\n"
         "/serverstats — آمار کامل سرور\n"
         "/adminlogs — لاگ اقدامات اخیر\n"
-        "/pendingstatements — بیانیه‌های در انتظار تایید\n\n"
+        "/pendingstatements — بیانیه‌های در انتظار تایید\n"
+        "/referrals — رتبه‌بندی بیشترین رفرال‌گیرها\n\n"
         f"⚔️ وضعیت جنگ اتحادها: {wars_status}"
     )
 
@@ -269,3 +271,26 @@ async def cmd_admin_logs(message: Message) -> None:
         lines.append(line)
 
     await message.answer("\n\n".join(lines), parse_mode="HTML")
+
+
+@router.message(Command("referrals"))
+async def cmd_referrals(message: Message) -> None:
+    _, is_admin = await _require_admin(message.from_user.id)
+    if not is_admin:
+        return
+
+    async with get_session() as session:
+        leaderboard = await get_referral_leaderboard(session, limit=20)
+
+    if not leaderboard:
+        await message.answer("هنوز هیچ‌کس با کد معرف کسی ثبت‌نام نکرده.")
+        return
+
+    medals = ["🥇", "🥈", "🥉"]
+    lines = ["👥 <b>رتبه‌بندی رفرال‌گیرها</b> (کل ربات، همه‌ی روم‌ها)\n"]
+    for i, (referrer, count) in enumerate(leaderboard):
+        rank_icon = medals[i] if i < 3 else f"{i + 1}."
+        room_note = "" if referrer.room_id is None else " (گروه)"
+        lines.append(f"{rank_icon} {referrer.nickname}{room_note} — {count} رفرال")
+
+    await message.answer("\n".join(lines), parse_mode="HTML")
