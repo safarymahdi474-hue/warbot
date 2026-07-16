@@ -27,6 +27,7 @@ from bot.utils.alliance_group_attack import (
     join_group_attack,
     resolve_group_attack,
 )
+from bot.utils.visuals import hp_bar, power_bar
 
 router = Router(name="alliance")
 
@@ -703,6 +704,9 @@ async def cb_group_attack_start(callback: CallbackQuery) -> None:
         header,
         f"🎯 هدف: {result_data['target_nickname']}",
         f"⚔️ قدرت مجموع تیم: {result_data['total_attack_power']} | 🛡️ قدرت هدف: {result_data['target_power']}",
+        power_bar(result_data["total_attack_power"], result_data["target_power"]),
+        f"❤️ HP هدف: {result_data['target_hp']}/{result_data['target_max_hp']}",
+        hp_bar(result_data["target_hp"], result_data["target_max_hp"]),
         f"👥 تعداد شرکت‌کننده: {result_data['participant_count']}",
         f"💀 نیروی از دست‌رفته‌ی هدف: {result_data['target_units_lost']}",
     ]
