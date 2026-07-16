@@ -9,6 +9,7 @@ from bot.database.models import User
 from bot.utils.achievements import check_referral_milestone
 from bot.utils.admin import ensure_admin_flag
 from bot.utils.progression import regen_energy, xp_required_for_level
+from bot.utils.referral import count_referrals, get_referred_users
 
 router = Router(name="profile")
 
@@ -22,7 +23,10 @@ def make_bar(current: int, maximum: int, length: int = 10) -> str:
 
 def profile_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
-        inline_keyboard=[[InlineKeyboardButton(text="🔙 منوی اصلی", callback_data="show_main_menu")]]
+        inline_keyboard=[
+            [InlineKeyboardButton(text="🔗 رفرال‌های من", callback_data="show_referrals")],
+            [InlineKeyboardButton(text="🔙 منوی اصلی", callback_data="show_main_menu")],
+        ]
     )
 
 
@@ -76,4 +80,65 @@ async def cb_profile(callback: CallbackQuery) -> None:
         await callback.answer("هنوز ثبت‌نام نکردی! /start رو بزن.", show_alert=True)
         return
     await callback.message.answer(build_profile_text(user), reply_markup=profile_keyboard(), parse_mode="HTML")
+    await callback.answer()
+
+
+# ---------------------------------------------------------------------------
+# رفرال‌های من
+# ---------------------------------------------------------------------------
+
+def referrals_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="🔄 بروزرسانی", callback_data="show_referrals")],
+            [InlineKeyboardButton(text="🔙 بازگشت به پروفایل", callback_data="show_profile")],
+        ]
+    )
+
+
+async def _build_referrals_text(telegram_id: int, bot_username: str | None) -> str:
+    async with get_session() as session:
+        result = await session.execute(select(User).where(*user_scope(telegram_id)))
+        user = result.scalar_one_or_none()
+        if user is None:
+            return "هنوز ثبت‌نام نکردی! دستور /start رو بزن."
+
+        total = await count_referrals(session, user.id)
+        referred_users = await get_referred_users(session, user.id)
+
+    lines = ["🔗 <b>سیستم رفرال</b>\n"]
+    lines.append(f"کد معرف تو: <code>{user.referral_code}</code>")
+    if bot_username:
+        lines.append(f"لینک دعوت: <code>https://t.me/{bot_username}?start={user.referral_code}</code>")
+    lines.append(f"\n👥 تعداد کسایی که با کد تو ثبت‌نام کردن: <b>{total}</b>")
+    lines.append(
+        "🎁 هروقت یکی از زیرمجموعه‌هات برای اولین‌بار به سطح مشخصی برسه، "
+        "یه‌بار پاداش طلا می‌گیری (برای هر نفر جدا)."
+    )
+
+    if referred_users:
+        lines.append("\n📋 <b>آخرین رفرال‌ها:</b>")
+        for u in referred_users:
+            milestone_icon = "✅" if u.referral_milestone_paid else "⏳"
+            lines.append(f"  {milestone_icon} {u.nickname} — سطح {u.level}")
+    else:
+        lines.append("\nهنوز کسی با کد تو ثبت‌نام نکرده. کدت رو با دوستات به اشتراک بذار!")
+
+    return "\n".join(lines)
+
+
+@router.callback_query(F.data == "show_referrals")
+async def cb_show_referrals(callback: CallbackQuery) -> None:
+    bot_username = None
+    try:
+        me = await callback.bot.get_me()
+        bot_username = me.username
+    except Exception:
+        pass
+
+    text = await _build_referrals_text(callback.from_user.id, bot_username)
+    try:
+        await callback.message.edit_text(text, reply_markup=referrals_keyboard(), parse_mode="HTML")
+    except Exception:
+        await callback.message.answer(text, reply_markup=referrals_keyboard(), parse_mode="HTML")
     await callback.answer()
