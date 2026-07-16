@@ -321,7 +321,7 @@ DEFAULT_UNIT_TYPES = [
     },
 ]
 
-# لیست اولیه‌ی تحقیقات - فاز ۳
+# لیست اولیه‌ی تحقیقات - فاز ۳ + توسعه‌ی تکنولوژی (فاز جدید)
 DEFAULT_RESEARCH_TYPES = [
     {
         "key": "advanced_weapons",
@@ -357,6 +357,85 @@ DEFAULT_RESEARCH_TYPES = [
         "cost_iron": 60,
         "cost_oil": 40,
         "base_research_seconds": 240,
+        "max_level": 10,
+    },
+    # --- تحقیقات جدید (توسعه‌ی تکنولوژی) ---
+    {
+        "key": "fortifications",
+        "name_fa": "استحکامات",
+        "icon": "🧱",
+        # کاهش درصد تلفات نیرو وقتی مدافعی (نه مهاجم) - در battle.py مصرف میشه
+        "effect_type": "defense_unit_loss_reduction_percent",
+        "effect_per_level": 4.0,
+        "cost_gold": 550,
+        "cost_iron": 120,
+        "cost_oil": 0,
+        "base_research_seconds": 320,
+        "max_level": 10,
+    },
+    {
+        "key": "military_medicine",
+        "name_fa": "پزشکی نظامی",
+        "icon": "🩹",
+        # کاهش HP از دست‌رفته بعد از نبرد (چه برنده چه بازنده)
+        "effect_type": "hp_loss_reduction_percent",
+        "effect_per_level": 4.0,
+        "cost_gold": 450,
+        "cost_iron": 80,
+        "cost_oil": 20,
+        "base_research_seconds": 280,
+        "max_level": 10,
+    },
+    {
+        "key": "counter_espionage",
+        "name_fa": "ضدجاسوسی",
+        "icon": "🕶️",
+        # کاهش شانس لو رفتن وقتی کسی ازت جاسوسی می‌کنه
+        "effect_type": "spy_detection_reduction_percent",
+        "effect_per_level": 6.0,
+        "cost_gold": 400,
+        "cost_iron": 50,
+        "cost_oil": 30,
+        "base_research_seconds": 260,
+        "max_level": 10,
+    },
+    {
+        "key": "loot_tactics",
+        "name_fa": "تاکتیک غارت",
+        "icon": "💰",
+        # +درصد به درصد غارت PvP (وقتی مهاجمی و می‌بری)
+        "effect_type": "loot_bonus_percent",
+        "effect_per_level": 5.0,
+        "cost_gold": 500,
+        "cost_iron": 60,
+        "cost_oil": 40,
+        "base_research_seconds": 260,
+        "max_level": 10,
+    },
+    {
+        "key": "war_morale",
+        "name_fa": "روحیه‌ی جنگی",
+        "icon": "🎖️",
+        # کاهش شدت اثر منفی رویداد «کمین» وقتی مهاجمی
+        "effect_type": "ambush_resist_percent",
+        "effect_per_level": 8.0,
+        "cost_gold": 480,
+        "cost_iron": 70,
+        "cost_oil": 20,
+        "base_research_seconds": 260,
+        "max_level": 10,
+    },
+    {
+        "key": "air_defense",
+        "name_fa": "پدافند هوایی",
+        "icon": "🛰️",
+        # فقط سهم قدرت حمله‌ای که از هواپیمای حریف میاد رو کم می‌کنه
+        "effect_type": "air_defense_percent",
+        "effect_per_level": 8.0,
+        "cost_gold": 600,
+        "cost_iron": 100,
+        "cost_oil": 60,
+        "base_research_seconds": 340,
         "max_level": 10,
     },
 ]
@@ -604,60 +683,49 @@ DEFAULT_SHOP_ITEMS = [
 ]
 
 
+async def _seed_missing_by_key(session, model, defaults: list[dict], key_field: str = "key") -> None:
+    """
+    برخلاف «فقط اگه جدول کاملاً خالیه سید کن»، این تابع فقط ردیف‌هایی که
+    key‌شون از قبل نیست رو اضافه می‌کنه. این‌جوری وقتی به DEFAULT_* یه آیتم/
+    تحقیق/ماموریت جدید اضافه می‌کنیم، بدون لمس داده‌های موجود (و بدون
+    نیاز به خالی کردن دیتابیس) خودش برای همه‌ی دیتابیس‌های در حال اجرا ظاهر میشه.
+    """
+    result = await session.execute(select(model))
+    existing_keys = {getattr(row, key_field) for row in result.scalars().all()}
+    for data in defaults:
+        if data[key_field] not in existing_keys:
+            session.add(model(**data))
+
+
 async def init_db() -> None:
-    """جدول‌ها رو می‌سازه و اگه چیزی سید نشده بود، داده‌های پیش‌فرض رو اضافه می‌کنه."""
+    """جدول‌ها رو می‌سازه و اگه چیز جدیدی به لیست‌های پیش‌فرض اضافه شده بود، سیدش می‌کنه."""
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
 
     async with async_session() as session:
         result = await session.execute(select(Country))
         existing_countries = list(result.scalars().all())
-        if not existing_countries:
-            for c in DEFAULT_COUNTRIES:
+        existing_country_names = {c.name_fa for c in existing_countries}
+        for c in DEFAULT_COUNTRIES:
+            if c["name_fa"] not in existing_country_names:
                 session.add(Country(**c))
-        else:
-            # اگه قبلاً یه لیست کوچیک‌تر سید شده، کشورهای جدید (بر اساس اسم) رو اضافه می‌کنیم
-            # بدون اینکه به کشورهای موجود (و کاربرهایی که انتخابشون کردن) دست بزنیم.
-            existing_names = {c.name_fa for c in existing_countries}
-            for c in DEFAULT_COUNTRIES:
-                if c["name_fa"] not in existing_names:
-                    session.add(Country(**c))
 
-        result = await session.execute(select(BuildingType))
-        if result.scalars().first() is None:
-            for b in DEFAULT_BUILDING_TYPES:
-                session.add(BuildingType(**b))
+        await _seed_missing_by_key(session, BuildingType, DEFAULT_BUILDING_TYPES)
+        await _seed_missing_by_key(session, UnitType, DEFAULT_UNIT_TYPES)
+        await _seed_missing_by_key(session, ResearchType, DEFAULT_RESEARCH_TYPES)
+        await _seed_missing_by_key(session, MissionType, DEFAULT_MISSION_TYPES)
+        await _seed_missing_by_key(session, ItemType, DEFAULT_ITEM_TYPES)
+        await _seed_missing_by_key(session, AchievementType, DEFAULT_ACHIEVEMENT_TYPES)
 
-        result = await session.execute(select(UnitType))
-        if result.scalars().first() is None:
-            for u in DEFAULT_UNIT_TYPES:
-                session.add(UnitType(**u))
-
-        result = await session.execute(select(ResearchType))
-        if result.scalars().first() is None:
-            for r in DEFAULT_RESEARCH_TYPES:
-                session.add(ResearchType(**r))
-
-        result = await session.execute(select(MissionType))
-        if result.scalars().first() is None:
-            for m in DEFAULT_MISSION_TYPES:
-                session.add(MissionType(**m))
-
-        result = await session.execute(select(ItemType))
-        if result.scalars().first() is None:
-            for i in DEFAULT_ITEM_TYPES:
-                session.add(ItemType(**i))
-
-        result = await session.execute(select(AchievementType))
-        if result.scalars().first() is None:
-            for a in DEFAULT_ACHIEVEMENT_TYPES:
-                session.add(AchievementType(**a))
-
+        # ShopItem قبل از سید شدن نیاز داره reward_item_key رو به id واقعی ItemType تبدیل کنه
         result = await session.execute(select(ShopItem))
-        if result.scalars().first() is None:
+        existing_shop_keys = {row.key for row in result.scalars().all()}
+        if any(s["key"] not in existing_shop_keys for s in DEFAULT_SHOP_ITEMS):
             result_items = await session.execute(select(ItemType))
             item_type_by_key = {it.key: it.id for it in result_items.scalars().all()}
             for s in DEFAULT_SHOP_ITEMS:
+                if s["key"] in existing_shop_keys:
+                    continue
                 data = dict(s)
                 item_key = data.pop("reward_item_key", None)
                 if item_key is not None:
