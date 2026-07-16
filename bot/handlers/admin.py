@@ -1,14 +1,14 @@
 import asyncio
 
-from aiogram import Router
+from aiogram import F, Router
 from aiogram.filters import Command, CommandObject
-from aiogram.types import Message
+from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
 from sqlalchemy import select
 
 from bot.database.db import get_session
 from bot.utils.context import room_condition, user_scope
 from bot.config import settings
-from bot.database.models import User
+from bot.database.models import AdminLog, Alliance, AllianceWar, BannedTelegramUser, BattleReport, Room, User
 from bot.utils.admin import (
     ban_user,
     get_all_user_telegram_ids,
@@ -17,6 +17,7 @@ from bot.utils.admin import (
     log_action,
     unban_user,
 )
+from bot.utils.game_settings import are_wars_enabled, set_wars_enabled
 
 router = Router(name="admin")
 
@@ -33,22 +34,98 @@ async def _require_admin(telegram_id: int) -> tuple[User | None, bool]:
     return user, is_admin
 
 
-@router.message(Command("admin"))
-async def cmd_admin(message: Message) -> None:
-    _, is_admin = await _require_admin(message.from_user.id)
-    if not is_admin:
-        return  # کاربر عادی - سکوت (پیام خطا نمیدیم که وجود پنل رو لو نده)
+def admin_panel_keyboard(wars_enabled: bool) -> InlineKeyboardMarkup:
+    wars_label = "⏸️ توقف کامل جنگ‌ها" if wars_enabled else "▶️ باز کردن جنگ‌ها"
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text=wars_label, callback_data="toggle_wars")],
+            [InlineKeyboardButton(text="🔄 بروزرسانی", callback_data="show_admin_panel")],
+        ]
+    )
 
-    await message.answer(
+
+def admin_panel_text(wars_enabled: bool) -> str:
+    wars_status = "✅ فعال (اتحادها می‌تونن اعلام جنگ کنن)" if wars_enabled else "⛔️ متوقف‌شده توسط مدیریت"
+    return (
         "🛠️ <b>پنل مدیریت</b>\n\n"
         "/ban نیک‌نیم دلیل — بن کردن کاربر\n"
         "/unban نیک‌نیم — آن‌بن کردن کاربر\n"
         "/broadcast متن — پیام همگانی به همه کاربران\n"
         "/serverstats — آمار کامل سرور\n"
         "/adminlogs — لاگ اقدامات اخیر\n"
-        "/pendingstatements — بیانیه‌های در انتظار تایید",
+        "/pendingstatements — بیانیه‌های در انتظار تایید\n\n"
+        f"⚔️ وضعیت جنگ اتحادها: {wars_status}"
+    )
+
+
+@router.message(Command("admin"))
+async def cmd_admin(message: Message) -> None:
+    _, is_admin = await _require_admin(message.from_user.id)
+    if not is_admin:
+        return  # کاربر عادی - سکوت (پیام خطا نمیدیم که وجود پنل رو لو نده)
+
+    async with get_session() as session:
+        wars_enabled = await are_wars_enabled(session)
+
+    await message.answer(
+        admin_panel_text(wars_enabled),
+        reply_markup=admin_panel_keyboard(wars_enabled),
         parse_mode="HTML",
     )
+
+
+@router.callback_query(F.data == "show_admin_panel")
+async def cb_show_admin_panel(callback: CallbackQuery) -> None:
+    if callback.from_user.id not in settings.admin_ids:
+        await callback.answer("فقط ادمین بهش دسترسی داره.", show_alert=True)
+        return
+
+    async with get_session() as session:
+        wars_enabled = await are_wars_enabled(session)
+
+    try:
+        await callback.message.edit_text(
+            admin_panel_text(wars_enabled),
+            reply_markup=admin_panel_keyboard(wars_enabled),
+            parse_mode="HTML",
+        )
+    except Exception:
+        await callback.message.answer(
+            admin_panel_text(wars_enabled),
+            reply_markup=admin_panel_keyboard(wars_enabled),
+            parse_mode="HTML",
+        )
+    await callback.answer()
+
+
+@router.callback_query(F.data == "toggle_wars")
+async def cb_toggle_wars(callback: CallbackQuery) -> None:
+    if callback.from_user.id not in settings.admin_ids:
+        await callback.answer("فقط ادمین بهش دسترسی داره.", show_alert=True)
+        return
+
+    async with get_session() as session:
+        currently_enabled = await are_wars_enabled(session)
+        new_state = not currently_enabled
+        cancelled_count = await set_wars_enabled(session, new_state)
+        await log_action(
+            session,
+            "toggle_wars",
+            callback.from_user.id,
+            None,
+            f"جنگ‌ها {'فعال' if new_state else 'متوقف'} شد. {cancelled_count} جنگ فعال لغو شد."
+            if not new_state
+            else "جنگ‌ها دوباره فعال شد.",
+        )
+        await session.commit()
+
+    if new_state:
+        alert = "✅ اعلام جنگ دوباره فعال شد."
+    else:
+        alert = f"⏸️ همه‌ی جنگ‌ها متوقف شدن. {cancelled_count} جنگ فعال لغو شد. اعلام جنگ جدید هم بسته شد."
+    await callback.answer(alert, show_alert=True)
+
+    await cb_show_admin_panel(callback)
 
 
 @router.message(Command("ban"))
@@ -178,6 +255,7 @@ async def cmd_admin_logs(message: Message) -> None:
         "unban": "✅ آن‌بن",
         "broadcast": "📣 پیام همگانی",
         "promote_admin": "👑 ارتقای ادمین",
+        "toggle_wars": "⚔️ تغییر وضعیت جنگ",
     }
     lines = ["📜 <b>لاگ اقدامات اخیر</b>\n"]
     for log in logs:
