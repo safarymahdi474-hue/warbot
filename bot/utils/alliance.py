@@ -6,6 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from bot.config import settings
 from bot.database.models import Alliance, AllianceWar, User
 from bot.utils.context import current_room, room_condition
+from bot.utils.game_settings import are_wars_enabled
 
 # ---------------------------------------------------------------------------
 # ساخت / عضویت / ترک
@@ -122,6 +123,8 @@ async def get_active_war_between(
 async def declare_war(
     session: AsyncSession, leader: User, target_alliance: Alliance
 ) -> AllianceWar | str:
+    if not await are_wars_enabled(session):
+        return "اعلام جنگ در حال حاضر توسط مدیریت ربات موقتاً غیرفعال شده."
     if leader.alliance_role != "leader":
         return "فقط رهبر اتحاد می‌تونه اعلام جنگ کنه."
     if leader.alliance_id == target_alliance.id:
