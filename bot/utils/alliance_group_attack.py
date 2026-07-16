@@ -244,6 +244,8 @@ async def resolve_group_attack(session: AsyncSession, attack: AllianceGroupAttac
         "target_power": int(target_power),
         "target_nickname": target.nickname,
         "target_units_lost": target_units_lost,
+        "target_hp": target.hp,
+        "target_max_hp": target.max_hp,
         "loot": total_loot,
         "treasury_gold_share": treasury_gold_share,
         "per_participant_gold": per_participant_gold,
