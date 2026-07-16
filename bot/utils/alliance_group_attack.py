@@ -14,10 +14,11 @@ from bot.database.models import (
     User,
 )
 from bot.utils.alliance import add_war_score, get_active_war_between
-from bot.utils.battle import compute_power, destroy_units, load_combat_units_and_research
+from bot.utils.battle import compute_category_power, compute_power, destroy_units, load_combat_units_and_research
 from bot.utils.context import current_room, room_condition
 from bot.utils.global_events import get_xp_multiplier
 from bot.utils.items import get_active_boost_percent
+from bot.utils.military import get_bonus_percent
 from bot.utils.progression import add_xp
 
 
@@ -140,13 +141,16 @@ async def resolve_group_attack(session: AsyncSession, attack: AllianceGroupAttac
     # --- محاسبه‌ی قدرت هر شرکت‌کننده و جمع کل ---
     participant_data = []
     total_attack_power = 0
+    total_air_power = 0
     for user in participants:
         units, research = await load_combat_units_and_research(session, user.id)
         country_bonus = user.country.military_bonus_percent if user.country else 0.0
         boost = await get_active_boost_percent(session, user.id, "attack_percent")
         power = compute_power(units, research, country_bonus, "attack", boost)
+        air_power = compute_category_power(units, research, country_bonus, "attack", "plane", boost)
         total_attack_power += power
-        participant_data.append({"user": user, "units": units, "power": power})
+        total_air_power += air_power
+        participant_data.append({"user": user, "units": units, "research": research, "power": power})
 
     target_units, target_research = await load_combat_units_and_research(session, target.id)
     target_country_bonus = target.country.military_bonus_percent if target.country else 0.0
@@ -154,6 +158,13 @@ async def resolve_group_attack(session: AsyncSession, attack: AllianceGroupAttac
     target_power = compute_power(
         target_units, target_research, target_country_bonus, "defense", target_boost
     )
+
+    # 🛰️ پدافند هوایی هدف: فقط سهم قدرت تیم که از هواپیما میاد رو کم می‌کنه
+    air_ratio = (total_air_power / total_attack_power) if total_attack_power > 0 else 0.0
+    air_defense_bonus = get_bonus_percent(target_research, "air_defense_percent")
+    if air_ratio > 0 and air_defense_bonus > 0:
+        air_power_effective = total_attack_power * air_ratio
+        total_attack_power = int(total_attack_power - air_power_effective * (air_defense_bonus / 100))
 
     roll_attackers = total_attack_power * random.uniform(0.9, 1.1)
     roll_target = target_power * random.uniform(0.9, 1.1)
@@ -167,7 +178,11 @@ async def resolve_group_attack(session: AsyncSession, attack: AllianceGroupAttac
         own_unit_loss_pct = settings.WINNER_UNIT_LOSS_PERCENT
         own_hp_loss_pct = settings.WINNER_HP_LOSS_PERCENT
 
-        pct = settings.PVP_LOOT_PERCENT / 100
+        leader_data = next((d for d in participant_data if d["user"].id == attack.leader_id), None)
+        leader_loot_bonus = (
+            get_bonus_percent(leader_data["research"], "loot_bonus_percent") if leader_data else 0.0
+        )
+        pct = (settings.PVP_LOOT_PERCENT / 100) * (1 + leader_loot_bonus / 100)
         for field in total_loot:
             available = getattr(target, field)
             amount = int(available * pct)
@@ -178,6 +193,14 @@ async def resolve_group_attack(session: AsyncSession, attack: AllianceGroupAttac
         target_unit_loss_pct = settings.WINNER_UNIT_LOSS_PERCENT
         own_unit_loss_pct = settings.LOSER_UNIT_LOSS_PERCENT
         own_hp_loss_pct = settings.LOSER_HP_LOSS_PERCENT
+
+    # 🧱 استحکامات: هدف همیشه در حال دفاعه، پس تخفیف تلفاتش همیشه اعمال میشه
+    fortification_reduction = get_bonus_percent(target_research, "defense_unit_loss_reduction_percent")
+    target_unit_loss_pct = target_unit_loss_pct * max(0.0, 1 - fortification_reduction / 100)
+
+    # 🩹 پزشکی نظامی هدف
+    target_medicine = get_bonus_percent(target_research, "hp_loss_reduction_percent")
+    target_hp_loss = int(target_hp_loss * max(0.0, 1 - target_medicine / 100))
 
     target.hp = max(1, target.hp - target_hp_loss)
     target_units_lost = destroy_units(target_units, target_unit_loss_pct)
@@ -205,6 +228,8 @@ async def resolve_group_attack(session: AsyncSession, attack: AllianceGroupAttac
     for data in participant_data:
         user = data["user"]
         own_hp_loss = int(user.max_hp * own_hp_loss_pct / 100)
+        own_medicine = get_bonus_percent(data["research"], "hp_loss_reduction_percent")
+        own_hp_loss = int(own_hp_loss * max(0.0, 1 - own_medicine / 100))
         user.hp = max(1, user.hp - own_hp_loss)
         own_units_lost = destroy_units(data["units"], own_unit_loss_pct)
 
