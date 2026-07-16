@@ -7,6 +7,8 @@ from sqlalchemy.orm import selectinload
 
 from bot.config import settings
 from bot.database.models import BattleReport, User, UserResearch, UserUnit
+from bot.utils.context import current_room
+from bot.utils.global_events import get_xp_multiplier
 from bot.utils.items import get_active_boost_percent
 from bot.utils.military import effective_attack, effective_defense, get_bonus_percent
 from bot.utils.progression import add_xp
@@ -99,9 +101,15 @@ BATTLE_EVENTS = [
 ]
 
 
-def roll_battle_event() -> dict:
+def roll_battle_event(ambush_resist_percent: float = 0.0) -> dict:
     weights = [e["weight"] for e in BATTLE_EVENTS]
-    return random.choices(BATTLE_EVENTS, weights=weights, k=1)[0]
+    event = random.choices(BATTLE_EVENTS, weights=weights, k=1)[0]
+    if event["key"] == "ambush" and ambush_resist_percent > 0:
+        # 🎖️ روحیه‌ی جنگی: شدت اثر منفی کمین رو کم می‌کنه (نه حذفش)؛ دیکشنری
+        # اصلی BATTLE_EVENTS رو دستکاری نمی‌کنیم، یه کپی موقت می‌سازیم.
+        reduced_mult = 1 + (event["power_mult"] - 1) * max(0.0, 1 - ambush_resist_percent / 100)
+        event = {**event, "power_mult": reduced_mult}
+    return event
 
 
 async def load_combat_units_and_research(
@@ -133,6 +141,30 @@ def compute_power(
     total = 0
     for uu in units:
         if uu.quantity <= 0:
+            continue
+        ut = uu.unit_type
+        per_unit = effective_attack(ut, uu, bonus) if mode == "attack" else effective_defense(ut, uu, bonus)
+        per_unit = int(per_unit * (1 + country_military_bonus_percent / 100))
+        total += per_unit * uu.quantity
+    return total
+
+
+def compute_category_power(
+    units: list[UserUnit],
+    researches: list[UserResearch],
+    country_military_bonus_percent: float,
+    mode: str,
+    category: str,
+    extra_bonus_percent: float = 0.0,
+) -> int:
+    """
+    دقیقاً مثل compute_power، ولی فقط نیروهایی که unit_type.category شون برابر
+    category هست رو حساب می‌کنه (برای 🛰️ پدافند هوایی - category='plane').
+    """
+    bonus = get_bonus_percent(researches, f"{mode}_percent") + extra_bonus_percent
+    total = 0
+    for uu in units:
+        if uu.quantity <= 0 or uu.unit_type.category != category:
             continue
         ut = uu.unit_type
         per_unit = effective_attack(ut, uu, bonus) if mode == "attack" else effective_defense(ut, uu, bonus)
@@ -179,7 +211,8 @@ async def resolve_bot_battle(
 
     npc_power = int(max(attacker_power, 100) * diff["power_mult"] * random.uniform(0.85, 1.15))
 
-    event = roll_battle_event()
+    ambush_resist = get_bonus_percent(attacker_research, "ambush_resist_percent")
+    event = roll_battle_event(ambush_resist)
     if event["side"] in ("attacker", "both"):
         attacker_power = int(attacker_power * event["power_mult"])
     if event["side"] in ("defender", "both"):
@@ -202,11 +235,15 @@ async def resolve_bot_battle(
         gold_reward = int((diff["gold_reward"] // 4) * strategy["loot_mult"])
         xp_reward = diff["xp_reward"] // 3
 
+    medicine_bonus = get_bonus_percent(attacker_research, "hp_loss_reduction_percent")
+    hp_loss = int(hp_loss * max(0.0, 1 - medicine_bonus / 100))
     attacker.hp = max(1, attacker.hp - hp_loss)
     units_lost = destroy_units(attacker_units, unit_loss_percent)
     attacker.gold += gold_reward
     if won:
         attacker.battles_won_total += 1
+    xp_multiplier = await get_xp_multiplier(session, current_room())
+    xp_reward = int(xp_reward * xp_multiplier)
     leveled_up = add_xp(attacker, xp_reward)
 
     report = BattleReport(
@@ -242,19 +279,31 @@ async def resolve_pvp_battle(
     attacker_attack_boost = await get_active_boost_percent(session, attacker.id, "attack_percent")
     defender_defense_boost = await get_active_boost_percent(session, defender.id, "defense_percent")
 
-    attacker_power = compute_power(
+    attacker_power_raw = compute_power(
         attacker_units, attacker_research, attacker_country_bonus, "attack", attacker_attack_boost
     )
-    attacker_power = int(attacker_power * strategy["power_mult"])
+    attacker_air_power_raw = compute_category_power(
+        attacker_units, attacker_research, attacker_country_bonus, "attack", "plane", attacker_attack_boost
+    )
+    attacker_air_ratio = (attacker_air_power_raw / attacker_power_raw) if attacker_power_raw > 0 else 0.0
+
+    attacker_power = int(attacker_power_raw * strategy["power_mult"])
     defender_power = compute_power(
         defender_units, defender_research, defender_country_bonus, "defense", defender_defense_boost
     )
 
-    event = roll_battle_event()
+    ambush_resist = get_bonus_percent(attacker_research, "ambush_resist_percent")
+    event = roll_battle_event(ambush_resist)
     if event["side"] in ("attacker", "both"):
         attacker_power = int(attacker_power * event["power_mult"])
     if event["side"] in ("defender", "both"):
         defender_power = int(defender_power * event["power_mult"])
+
+    # 🛰️ پدافند هوایی: فقط سهم قدرت مهاجم که از هواپیما میاد رو کم می‌کنه
+    air_defense_bonus = get_bonus_percent(defender_research, "air_defense_percent")
+    if attacker_air_ratio > 0 and air_defense_bonus > 0:
+        attacker_air_power_effective = attacker_power * attacker_air_ratio
+        attacker_power = int(attacker_power - attacker_air_power_effective * (air_defense_bonus / 100))
 
     attacker.energy -= settings.ATTACK_ENERGY_COST
 
@@ -275,6 +324,16 @@ async def resolve_pvp_battle(
         defender_unit_loss_pct = settings.WINNER_UNIT_LOSS_PERCENT
         xp_reward = 15
 
+    # 🧱 استحکامات: مدافع همیشه (چه برنده چه بازنده) کمتر نیرو از دست میده
+    fortification_reduction = get_bonus_percent(defender_research, "defense_unit_loss_reduction_percent")
+    defender_unit_loss_pct = defender_unit_loss_pct * max(0.0, 1 - fortification_reduction / 100)
+
+    # 🩹 پزشکی نظامی: هرکس این تحقیق رو داشته باشه، خودش کمتر HP از دست میده
+    attacker_medicine = get_bonus_percent(attacker_research, "hp_loss_reduction_percent")
+    defender_medicine = get_bonus_percent(defender_research, "hp_loss_reduction_percent")
+    attacker_hp_loss = int(attacker_hp_loss * max(0.0, 1 - attacker_medicine / 100))
+    defender_hp_loss = int(defender_hp_loss * max(0.0, 1 - defender_medicine / 100))
+
     attacker.hp = max(1, attacker.hp - attacker_hp_loss)
     defender.hp = max(1, defender.hp - defender_hp_loss)
 
@@ -288,7 +347,8 @@ async def resolve_pvp_battle(
 
     loot = {"gold": 0, "iron": 0, "oil": 0, "food": 0}
     if attacker_won:
-        pct = (settings.PVP_LOOT_PERCENT / 100) * strategy["loot_mult"]
+        loot_tactics_bonus = get_bonus_percent(attacker_research, "loot_bonus_percent")
+        pct = (settings.PVP_LOOT_PERCENT / 100) * strategy["loot_mult"] * (1 + loot_tactics_bonus / 100)
         for field in loot:
             available = getattr(defender, field)
             amount = int(available * pct)
@@ -296,6 +356,8 @@ async def resolve_pvp_battle(
             setattr(defender, field, available - amount)
             setattr(attacker, field, getattr(attacker, field) + amount)
 
+    xp_multiplier = await get_xp_multiplier(session, current_room())
+    xp_reward = int(xp_reward * xp_multiplier)
     leveled_up = add_xp(attacker, xp_reward)
 
     report = BattleReport(
