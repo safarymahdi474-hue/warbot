@@ -26,6 +26,7 @@ from bot.utils.pvp_season import (
     record_pvp_win,
 )
 from bot.utils.spy import can_spy, perform_spy
+from bot.utils.visuals import hp_bar, power_bar
 
 router = Router(name="battle")
 
@@ -148,13 +149,15 @@ async def cb_attack_bot(callback: CallbackQuery) -> None:
             await record_progress(session, attacker, "battle_win", 1)
         await session.commit()
 
-        text = build_bot_report_text(report, leveled_up)
+        text = build_bot_report_text(report, leveled_up, attacker.hp, attacker.max_hp)
 
     await callback.message.edit_text(text, reply_markup=bot_difficulty_keyboard(strategy_key), parse_mode="HTML")
     await callback.answer()
 
 
-def build_bot_report_text(report: BattleReport, leveled_up: list[int]) -> str:
+def build_bot_report_text(
+    report: BattleReport, leveled_up: list[int], attacker_hp: int, attacker_max_hp: int
+) -> str:
     won = report.winner == "attacker"
     header = "🎉 <b>پیروز شدی!</b>" if won else "💥 <b>شکست خوردی!</b>"
     lines = [header]
@@ -165,7 +168,9 @@ def build_bot_report_text(report: BattleReport, leveled_up: list[int]) -> str:
 
     lines += [
         f"⚔️ قدرت تو: {report.attacker_power} | 🤖 قدرت ربات: {report.defender_power}",
-        f"❤️ HP از دست رفته: {report.attacker_hp_lost}",
+        power_bar(report.attacker_power, report.defender_power),
+        f"❤️ HP: {attacker_hp}/{attacker_max_hp} (-{report.attacker_hp_lost})",
+        hp_bar(attacker_hp, attacker_max_hp),
         f"💀 نیروی از دست رفته: {report.attacker_units_lost}",
         f"💰 طلای بدست‌اومده: {report.loot_gold}",
         f"⭐ XP: +{report.xp_gained}",
@@ -350,7 +355,9 @@ async def cb_attack_pvp(callback: CallbackQuery) -> None:
 
         await session.commit()
 
-        text = build_pvp_report_text(report, defender_nickname, leveled_up) + war_note
+        text = build_pvp_report_text(
+            report, defender_nickname, leveled_up, attacker.hp, attacker.max_hp, defender.hp, defender.max_hp
+        ) + war_note
 
         defender_notify = defender.notifications_enabled
         defender_telegram_id = defender.telegram_id
@@ -380,7 +387,15 @@ async def cb_attack_pvp(callback: CallbackQuery) -> None:
     await callback.answer()
 
 
-def build_pvp_report_text(report: BattleReport, defender_nickname: str, leveled_up: list[int]) -> str:
+def build_pvp_report_text(
+    report: BattleReport,
+    defender_nickname: str,
+    leveled_up: list[int],
+    attacker_hp: int,
+    attacker_max_hp: int,
+    defender_hp: int,
+    defender_max_hp: int,
+) -> str:
     won = report.winner == "attacker"
     header = (
         f"🎉 <b>{defender_nickname} رو شکست دادی!</b>"
@@ -395,7 +410,11 @@ def build_pvp_report_text(report: BattleReport, defender_nickname: str, leveled_
 
     lines += [
         f"⚔️ قدرت تو: {report.attacker_power} | 🛡️ قدرت طرف مقابل: {report.defender_power}",
-        f"❤️ HP از دست رفته: {report.attacker_hp_lost}",
+        power_bar(report.attacker_power, report.defender_power),
+        f"❤️ HP تو: {attacker_hp}/{attacker_max_hp} (-{report.attacker_hp_lost})",
+        hp_bar(attacker_hp, attacker_max_hp),
+        f"❤️ HP {defender_nickname}: {defender_hp}/{defender_max_hp}",
+        hp_bar(defender_hp, defender_max_hp),
         f"💀 نیروی از دست رفته (تو): {report.attacker_units_lost} | (طرف مقابل): {report.defender_units_lost}",
     ]
     if won:
