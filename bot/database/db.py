@@ -4,6 +4,7 @@ from sqlalchemy import select
 from bot.config import settings
 from bot.database.models import (
     AchievementType,
+    AllianceResearchType,
     Base,
     BuildingType,
     Country,
@@ -635,6 +636,21 @@ DEFAULT_ACHIEVEMENT_TYPES = [
     },
 ]
 
+# لیست اولیه‌ی تحقیقات اتحادی - سرمایه‌گذاری رهبر از خزانه‌ی اتحاد، اثر روی همه‌ی اعضا
+DEFAULT_ALLIANCE_RESEARCH_TYPES = [
+    {
+        "key": "military_academy",
+        "name_fa": "آکادمی نظامی اتحاد",
+        "icon": "🏛️",
+        # +درصد حمله برای همه‌ی اعضا، فقط وقتی اتحاد در حال جنگه
+        "effect_type": "alliance_attack_percent",
+        "effect_per_level": 5.0,
+        "cost_gold_per_level": 1500,
+        "base_research_seconds": 600,
+        "max_level": 5,
+    },
+]
+
 # لیست اولیه‌ی فروشگاه - فاز ۹ (قیمت‌ها به تلگرام استارز/XTR)
 # نکته: reward_item_key در init_db به ItemType.id واقعی تبدیل میشه (چون قبل از سید شدن آیتم‌ها اینجا id نداریم)
 DEFAULT_SHOP_ITEMS = [
@@ -716,6 +732,7 @@ async def init_db() -> None:
         await _seed_missing_by_key(session, MissionType, DEFAULT_MISSION_TYPES)
         await _seed_missing_by_key(session, ItemType, DEFAULT_ITEM_TYPES)
         await _seed_missing_by_key(session, AchievementType, DEFAULT_ACHIEVEMENT_TYPES)
+        await _seed_missing_by_key(session, AllianceResearchType, DEFAULT_ALLIANCE_RESEARCH_TYPES)
 
         # ShopItem قبل از سید شدن نیاز داره reward_item_key رو به id واقعی ItemType تبدیل کنه
         result = await session.execute(select(ShopItem))
