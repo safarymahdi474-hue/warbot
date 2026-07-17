@@ -14,6 +14,7 @@ from bot.database.models import (
     User,
 )
 from bot.utils.alliance import add_war_score, get_active_war_between
+from bot.utils.alliance_research import get_alliance_bonus_percent
 from bot.utils.battle import compute_category_power, compute_power, destroy_units, load_combat_units_and_research
 from bot.utils.context import current_room, room_condition
 from bot.utils.global_events import get_xp_multiplier
@@ -138,6 +139,16 @@ async def resolve_group_attack(session: AsyncSession, attack: AllianceGroupAttac
     if target is None:
         return "هدف این حمله دیگه در دسترس نیست."
 
+    # 🏛️ آکادمی نظامی اتحاد: فقط وقتی اتحاد مهاجم با اتحاد هدف در جنگ فعاله
+    war = None
+    academy_bonus = 0.0
+    if target.alliance_id and target.alliance_id != attack.alliance_id:
+        war = await get_active_war_between(session, attack.alliance_id, target.alliance_id)
+        if war is not None:
+            academy_bonus = await get_alliance_bonus_percent(
+                session, attack.alliance_id, "alliance_attack_percent"
+            )
+
     # --- محاسبه‌ی قدرت هر شرکت‌کننده و جمع کل ---
     participant_data = []
     total_attack_power = 0
@@ -145,7 +156,7 @@ async def resolve_group_attack(session: AsyncSession, attack: AllianceGroupAttac
     for user in participants:
         units, research = await load_combat_units_and_research(session, user.id)
         country_bonus = user.country.military_bonus_percent if user.country else 0.0
-        boost = await get_active_boost_percent(session, user.id, "attack_percent")
+        boost = await get_active_boost_percent(session, user.id, "attack_percent") + academy_bonus
         power = compute_power(units, research, country_bonus, "attack", boost)
         air_power = compute_category_power(units, research, country_bonus, "attack", "plane", boost)
         total_attack_power += power
@@ -251,14 +262,12 @@ async def resolve_group_attack(session: AsyncSession, attack: AllianceGroupAttac
             }
         )
 
-    # --- امتیاز جنگ اتحاد (اگه در جنگ باشن) ---
+    # --- امتیاز جنگ اتحاد (اگه در جنگ باشن - war از بالا قبلاً واکشی شده) ---
     war_note_alliance_id = None
-    if target.alliance_id and target.alliance_id != attack.alliance_id:
-        war = await get_active_war_between(session, attack.alliance_id, target.alliance_id)
-        if war is not None:
-            winner_alliance_id = attack.alliance_id if attackers_won else target.alliance_id
-            await add_war_score(session, war, winner_alliance_id, int(total_attack_power))
-            war_note_alliance_id = winner_alliance_id
+    if war is not None:
+        winner_alliance_id = attack.alliance_id if attackers_won else target.alliance_id
+        await add_war_score(session, war, winner_alliance_id, int(total_attack_power))
+        war_note_alliance_id = winner_alliance_id
 
     attack.status = "resolved"
     attack.resolved_at = datetime.utcnow()
