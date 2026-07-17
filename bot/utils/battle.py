@@ -7,6 +7,8 @@ from sqlalchemy.orm import selectinload
 
 from bot.config import settings
 from bot.database.models import BattleReport, User, UserResearch, UserUnit
+from bot.utils.alliance import get_active_war_between
+from bot.utils.alliance_research import get_alliance_bonus_percent
 from bot.utils.context import current_room
 from bot.utils.global_events import get_xp_multiplier
 from bot.utils.items import get_active_boost_percent
@@ -278,6 +280,15 @@ async def resolve_pvp_battle(
 
     attacker_attack_boost = await get_active_boost_percent(session, attacker.id, "attack_percent")
     defender_defense_boost = await get_active_boost_percent(session, defender.id, "defense_percent")
+
+    # 🏛️ آکادمی نظامی اتحاد: فقط وقتی اتحاد مهاجم با اتحاد مدافع در جنگه اعمال میشه
+    if attacker.alliance_id and defender.alliance_id and attacker.alliance_id != defender.alliance_id:
+        war = await get_active_war_between(session, attacker.alliance_id, defender.alliance_id)
+        if war is not None:
+            academy_bonus = await get_alliance_bonus_percent(
+                session, attacker.alliance_id, "alliance_attack_percent"
+            )
+            attacker_attack_boost += academy_bonus
 
     attacker_power_raw = compute_power(
         attacker_units, attacker_research, attacker_country_bonus, "attack", attacker_attack_boost
