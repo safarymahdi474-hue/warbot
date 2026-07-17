@@ -431,6 +431,42 @@ class AllianceWar(Base):
     winner_alliance_id: Mapped[int | None] = mapped_column(ForeignKey("alliances.id"), nullable=True)
 
 
+class AllianceResearchType(Base):
+    """
+    نوع تحقیق اتحادی - برخلاف تحقیقات فردی، رهبر اتحاد با طلای صندوق اتحاد
+    (Alliance.treasury_gold) روش سرمایه‌گذاری می‌کنه و اثرش روی همه‌ی اعضا
+    اعمال میشه، نه فقط خودش.
+    """
+    __tablename__ = "alliance_research_types"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    key: Mapped[str] = mapped_column(String(32), unique=True)
+    name_fa: Mapped[str] = mapped_column(String(64))
+    icon: Mapped[str] = mapped_column(String(8), default="🏛️")
+    effect_type: Mapped[str] = mapped_column(String(32))
+    effect_per_level: Mapped[float] = mapped_column(Float, default=5.0)
+    cost_gold_per_level: Mapped[int] = mapped_column(Integer, default=1500)
+    base_research_seconds: Mapped[int] = mapped_column(Integer, default=600)
+    max_level: Mapped[int] = mapped_column(Integer, default=5)
+
+    alliance_researches: Mapped[list["AllianceResearch"]] = relationship(back_populates="research_type")
+
+
+class AllianceResearch(Base):
+    __tablename__ = "alliance_researches"
+    __table_args__ = (
+        UniqueConstraint("alliance_id", "research_type_id", name="uq_alliance_research_type"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    alliance_id: Mapped[int] = mapped_column(ForeignKey("alliances.id"))
+    research_type_id: Mapped[int] = mapped_column(ForeignKey("alliance_research_types.id"))
+    level: Mapped[int] = mapped_column(Integer, default=0)
+    upgrade_finish_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+    research_type: Mapped["AllianceResearchType"] = relationship(back_populates="alliance_researches")
+
+
 class AllianceGroupAttack(Base):
     """
     یک حمله‌ی گروهی سازمان‌دهی‌شده توسط رهبر/افسر اتحاد روی یک هدف مشخص.
