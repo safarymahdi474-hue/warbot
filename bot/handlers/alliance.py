@@ -17,6 +17,13 @@ from bot.utils.alliance import (
     kick_member,
     leave_alliance,
 )
+from bot.utils.alliance_research import (
+    alliance_research_cost,
+    alliance_research_duration,
+    finish_ready_alliance_researches,
+    load_alliance_researches_with_types,
+    start_alliance_research,
+)
 from bot.utils.alliance_group_attack import (
     cancel_group_attack,
     can_manage_group_attack,
@@ -49,6 +56,7 @@ def alliance_menu_keyboard(in_alliance: bool, is_leader: bool, is_officer: bool 
         if is_leader or is_officer:
             rows.append([InlineKeyboardButton(text="🤝 حمله‌ی گروهی", callback_data="group_attack_menu")])
         if is_leader:
+            rows.append([InlineKeyboardButton(text="🏛️ تحقیقات اتحاد", callback_data="show_alliance_research")])
             rows.append([InlineKeyboardButton(text="⚔️ اعلام جنگ", callback_data="declare_war_menu")])
             rows.append([InlineKeyboardButton(text="👢 اخراج عضو", callback_data="kick_menu")])
         rows.append([InlineKeyboardButton(text="🚪 ترک اتحاد", callback_data="leave_alliance")])
@@ -736,3 +744,139 @@ async def cb_group_attack_start(callback: CallbackQuery) -> None:
 
     await callback.message.edit_text(broadcast_text, parse_mode="HTML")
     await callback.answer()
+
+
+# ---------------------------------------------------------------------------
+# تحقیقات اتحادی (سرمایه‌گذاری رهبر از خزانه‌ی اتحاد، اثر روی همه‌ی اعضا)
+# ---------------------------------------------------------------------------
+
+def alliance_research_keyboard(pairs, is_leader: bool) -> InlineKeyboardMarkup:
+    rows = []
+    if is_leader:
+        for rt, ar in pairs:
+            if ar.upgrade_finish_at is not None:
+                rows.append(
+                    [InlineKeyboardButton(text=f"{rt.icon} {rt.name_fa} ⏳ در حال انجام...", callback_data="ar_busy")]
+                )
+            elif ar.level >= rt.max_level:
+                rows.append(
+                    [InlineKeyboardButton(text=f"{rt.icon} {rt.name_fa} (لول {ar.level} - MAX)", callback_data="ar_max")]
+                )
+            else:
+                rows.append(
+                    [
+                        InlineKeyboardButton(
+                            text=f"{rt.icon} ارتقای {rt.name_fa} به لول {ar.level + 1}",
+                            callback_data=f"ar_upgrade:{rt.id}",
+                        )
+                    ]
+                )
+    rows.append([InlineKeyboardButton(text="🔄 بروزرسانی", callback_data="show_alliance_research")])
+    rows.append([InlineKeyboardButton(text="🔙 بازگشت", callback_data="show_my_alliance")])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def build_alliance_research_text(alliance: Alliance, pairs) -> str:
+    lines = [
+        "🏛️ <b>تحقیقات اتحاد</b>",
+        "این تحقیقات از خزانه‌ی اتحاد پرداخت میشن و اثرشون روی همه‌ی اعضا اعمال میشه.\n",
+        f"💰 موجودی خزانه: {alliance.treasury_gold} طلا\n",
+    ]
+    for rt, ar in pairs:
+        current_bonus = rt.effect_per_level * ar.level
+        status = f"لول {ar.level}/{rt.max_level} — بونوس فعلی: +{current_bonus:.0f}٪"
+        if ar.upgrade_finish_at is not None:
+            status += " (⏳ در حال انجام)"
+        elif ar.level < rt.max_level:
+            cost = alliance_research_cost(rt, ar.level)
+            duration = alliance_research_duration(rt, ar.level)
+            minutes = max(1, int(duration.total_seconds() // 60))
+            status += f"\n   ارتقای بعدی: 💰{cost} — {minutes} دقیقه"
+        lines.append(f"{rt.icon} <b>{rt.name_fa}</b>: {status}")
+
+    lines.append(
+        "\nℹ️ آکادمی نظامی فقط وقتی اتحاد تو در حال جنگه اثرش رو روی حمله‌ی اعضا می‌ذاره."
+    )
+    return "\n\n".join(lines)
+
+
+async def _alliance_research_view(telegram_id: int):
+    async with get_session() as session:
+        result = await session.execute(select(User).where(*user_scope(telegram_id)))
+        user = result.scalar_one_or_none()
+        if user is None or user.alliance_id is None:
+            return "تو عضو هیچ اتحادی نیستی.", None
+
+        alliance = await session.get(Alliance, user.alliance_id)
+        pairs = await load_alliance_researches_with_types(session, alliance.id)
+
+        # ارتقاهای تموم‌شده رو اعمال کن
+        finished = finish_ready_alliance_researches([ar for _, ar in pairs])
+        if finished:
+            await session.commit()
+
+        text = build_alliance_research_text(alliance, pairs)
+        keyboard = alliance_research_keyboard(pairs, user.alliance_role == "leader")
+        return text, keyboard
+
+
+@router.callback_query(F.data == "show_alliance_research")
+async def cb_show_alliance_research(callback: CallbackQuery) -> None:
+    async with get_session() as session:
+        result = await session.execute(select(User).where(*user_scope(callback.from_user.id)))
+        user = result.scalar_one_or_none()
+        if user is None or user.alliance_id is None:
+            await callback.answer("تو عضو هیچ اتحادی نیستی.", show_alert=True)
+            return
+        if user.alliance_role != "leader":
+            await callback.answer("فقط رهبر اتحاد می‌تونه تحقیقات اتحادی رو مدیریت کنه.", show_alert=True)
+            return
+
+    text, keyboard = await _alliance_research_view(callback.from_user.id)
+    try:
+        await callback.message.edit_text(text, reply_markup=keyboard, parse_mode="HTML")
+    except Exception:
+        await callback.message.answer(text, reply_markup=keyboard, parse_mode="HTML")
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("ar_upgrade:"))
+async def cb_alliance_research_upgrade(callback: CallbackQuery) -> None:
+    research_type_id = int(callback.data.split(":")[1])
+
+    async with get_session() as session:
+        result = await session.execute(select(User).where(*user_scope(callback.from_user.id)))
+        user = result.scalar_one_or_none()
+        if user is None or user.alliance_id is None or user.alliance_role != "leader":
+            await callback.answer("فقط رهبر اتحاد می‌تونه این کارو بکنه.", show_alert=True)
+            return
+
+        alliance = await session.get(Alliance, user.alliance_id)
+        pairs = await load_alliance_researches_with_types(session, alliance.id)
+        found = next(((rt, ar) for rt, ar in pairs if rt.id == research_type_id), None)
+        if found is None:
+            await callback.answer("این تحقیق پیدا نشد.", show_alert=True)
+            return
+        research_type, research = found
+
+        error = start_alliance_research(alliance, research, research_type)
+        if error:
+            await callback.answer(error, show_alert=True)
+            return
+
+        await session.commit()
+        await callback.answer("✅ سرمایه‌گذاری روی این تحقیق شروع شد!", show_alert=True)
+
+    text, keyboard = await _alliance_research_view(callback.from_user.id)
+    try:
+        await callback.message.edit_text(text, reply_markup=keyboard, parse_mode="HTML")
+    except Exception:
+        await callback.message.answer(text, reply_markup=keyboard, parse_mode="HTML")
+
+
+@router.callback_query(F.data.in_({"ar_busy", "ar_max"}))
+async def cb_alliance_research_noop(callback: CallbackQuery) -> None:
+    if callback.data == "ar_busy":
+        await callback.answer("این تحقیق الان در حال انجامه، صبر کن.", show_alert=True)
+    else:
+        await callback.answer("این تحقیق به حداکثر سطح رسیده.", show_alert=True)
