@@ -28,11 +28,11 @@ async def cmd_redeem(message: Message, command: CommandObject) -> None:
             await message.answer("هنوز ثبت‌نام نکردی! دستور /start رو بزن.")
             return
 
-        coins, error = await redeem_gift_code(session, user, code)
+        gold, error = await redeem_gift_code(session, user, code)
         if error:
             await message.answer(f"❌ {error}")
             return
 
         await session.commit()
 
-    await message.answer(f"🎁 کد هدیه فعال شد!\n🪙 +{coins} سکه به حسابت اضافه شد.")
+    await message.answer(f"🎁 کد هدیه فعال شد!\n💰 +{gold} طلا به حسابت اضافه شد.")
