@@ -36,7 +36,9 @@ async def perform_spy(session: AsyncSession, spy_user: User, target: User) -> di
         target_units, target_research, target_country_bonus, "defense", target_defense_boost
     )
 
-    margin = settings.SPY_ERROR_MARGIN_PERCENT / 100
+    _spy_units, spy_research = await load_combat_units_and_research(session, spy_user.id)
+    spy_accuracy_bonus = get_bonus_percent(spy_research, "spy_accuracy_percent")
+    margin = (settings.SPY_ERROR_MARGIN_PERCENT / 100) * max(0.1, 1 - spy_accuracy_bonus / 100)
     low = max(0, int(real_power * (1 - margin)))
     high = int(real_power * (1 + margin))
 
