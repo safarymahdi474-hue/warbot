@@ -57,7 +57,7 @@ def admin_panel_text(wars_enabled: bool) -> str:
         "/adminlogs — لاگ اقدامات اخیر\n"
         "/pendingstatements — بیانیه‌های در انتظار تایید\n"
         "/referrals — رتبه‌بندی بیشترین رفرال‌گیرها\n"
-        "/creategift سکه تعداد_استفاده [کد_دلخواه] — ساخت کد هدیه\n"
+        "/creategift طلا تعداد_استفاده [کد_دلخواه] — ساخت کد هدیه\n"
         "/giftcodes — لیست کدهای هدیه اخیر\n"
         "/deactivategift کد — غیرفعال کردن یه کد هدیه\n\n"
         f"⚔️ وضعیت جنگ اتحادها: {wars_status}"
@@ -311,7 +311,7 @@ async def cmd_create_gift(message: Message, command: CommandObject) -> None:
     args = (command.args or "").strip().split()
     if len(args) < 2:
         await message.answer(
-            "فرمت درست: <code>/creategift تعداد_سکه تعداد_دفعات_استفاده [کد_دلخواه]</code>\n"
+            "فرمت درست: <code>/creategift تعداد_طلا تعداد_دفعات_استفاده [کد_دلخواه]</code>\n"
             "مثال: <code>/creategift 500 100</code>\n"
             "اگه کد دلخواه ندی، خودکار یه کد تصادفی ساخته میشه.",
             parse_mode="HTML",
@@ -319,16 +319,16 @@ async def cmd_create_gift(message: Message, command: CommandObject) -> None:
         return
 
     try:
-        coins_reward = int(args[0])
+        gold_reward = int(args[0])
         max_uses = int(args[1])
     except ValueError:
-        await message.answer("تعداد سکه و تعداد دفعات استفاده باید عدد باشن.")
+        await message.answer("تعداد طلا و تعداد دفعات استفاده باید عدد باشن.")
         return
 
     custom_code = args[2] if len(args) >= 3 else None
 
     async with get_session() as session:
-        gift_code = await create_gift_code(session, message.from_user.id, coins_reward, max_uses, custom_code)
+        gift_code = await create_gift_code(session, message.from_user.id, gold_reward, max_uses, custom_code)
         if isinstance(gift_code, str):
             await message.answer(f"❌ {gift_code}")
             return
@@ -338,7 +338,7 @@ async def cmd_create_gift(message: Message, command: CommandObject) -> None:
             "create_gift_code",
             message.from_user.id,
             None,
-            f"کد {gift_code.code} — {coins_reward} سکه — قابل استفاده توسط {max_uses} نفر",
+            f"کد {gift_code.code} — {gold_reward} طلا — قابل استفاده توسط {max_uses} نفر",
         )
         await session.commit()
         code_text = gift_code.code
@@ -346,7 +346,7 @@ async def cmd_create_gift(message: Message, command: CommandObject) -> None:
     await message.answer(
         f"✅ کد هدیه ساخته شد!\n\n"
         f"🎁 کد: <code>{code_text}</code>\n"
-        f"🪙 پاداش هر نفر: {coins_reward} سکه\n"
+        f"💰 پاداش هر نفر: {gold_reward} طلا\n"
         f"👥 ظرفیت: {max_uses} نفر\n\n"
         f"کاربرا با <code>/redeem {code_text}</code> فعالش می‌کنن.",
         parse_mode="HTML",
@@ -371,7 +371,7 @@ async def cmd_list_gift_codes(message: Message) -> None:
         is_exhausted = c.uses_count >= c.max_uses
         status = "⛔️ غیرفعال" if not c.active else ("🔴 تموم‌شده" if is_exhausted else "✅ فعال")
         lines.append(
-            f"<code>{c.code}</code> — 🪙{c.coins_reward} — "
+            f"<code>{c.code}</code> — 💰{c.gold_reward} — "
             f"{c.uses_count}/{c.max_uses} استفاده — {status}"
         )
 
