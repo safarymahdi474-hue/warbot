@@ -320,6 +320,20 @@ DEFAULT_UNIT_TYPES = [
         "min_player_level": 10,
         "max_level": 10,
     },
+    {
+        "key": "bomber",
+        "category": "plane",
+        "name_fa": "بمب‌افکن",
+        "icon": "💣",
+        "base_attack": 260,
+        "base_defense": 60,
+        "cost_gold": 3200,
+        "cost_iron": 450,
+        "cost_oil": 300,
+        "train_seconds_per_unit": 420,
+        "min_player_level": 14,
+        "max_level": 10,
+    },
 ]
 
 # لیست اولیه‌ی تحقیقات - فاز ۳ + توسعه‌ی تکنولوژی (فاز جدید)
@@ -437,6 +451,45 @@ DEFAULT_RESEARCH_TYPES = [
         "cost_iron": 100,
         "cost_oil": 60,
         "base_research_seconds": 340,
+        "max_level": 10,
+    },
+    {
+        "key": "combat_engineering",
+        "name_fa": "مهندسی رزمی",
+        "icon": "🔧",
+        # کاهش زمان ساخت/ارتقای ساختمان‌ها
+        "effect_type": "build_time_reduction_percent",
+        "effect_per_level": 4.0,
+        "cost_gold": 450,
+        "cost_iron": 90,
+        "cost_oil": 0,
+        "base_research_seconds": 280,
+        "max_level": 10,
+    },
+    {
+        "key": "artillery_precision",
+        "name_fa": "دقت توپخانه",
+        "icon": "🎯",
+        # شدت رویداد «ضربه‌ی بحرانی» رو (وقتی مهاجمی) بیشتر می‌کنه
+        "effect_type": "critical_hit_boost_percent",
+        "effect_per_level": 6.0,
+        "cost_gold": 500,
+        "cost_iron": 80,
+        "cost_oil": 40,
+        "base_research_seconds": 280,
+        "max_level": 10,
+    },
+    {
+        "key": "military_intelligence",
+        "name_fa": "اطلاعات نظامی",
+        "icon": "🕵️",
+        # دقیق‌تر شدن تخمین قدرت هدف وقتی خودت جاسوسی می‌کنی (بازه‌ی خطا کمتر)
+        "effect_type": "spy_accuracy_percent",
+        "effect_per_level": 6.0,
+        "cost_gold": 420,
+        "cost_iron": 40,
+        "cost_oil": 40,
+        "base_research_seconds": 260,
         "max_level": 10,
     },
 ]
