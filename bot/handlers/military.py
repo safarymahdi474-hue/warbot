@@ -42,12 +42,38 @@ BUY_QUANTITIES = [1, 10, 50]
 # بارگذاری و همگام‌سازی
 # ---------------------------------------------------------------------------
 
+async def _backfill_missing_rows(session, user: User) -> None:
+    """
+    اگه بعد از ثبت‌نام کاربر، نوع نیرو یا تحقیق جدیدی به کاتالوگ اضافه شده باشه
+    (مثلاً بمب‌افکن یا یه تحقیق جدید)، این تابع ردیف‌های ازقلم‌افتاده رو
+    می‌سازه. بدون این، کاربرهای قدیمی هیچ‌وقت آیتم‌های جدید رو نمی‌بینن.
+    """
+    result = await session.execute(select(UnitType))
+    all_unit_types = list(result.scalars().all())
+    result = await session.execute(select(UserUnit).where(UserUnit.user_id == user.id))
+    existing_unit_type_ids = {uu.unit_type_id for uu in result.scalars().all()}
+    for ut in all_unit_types:
+        if ut.id not in existing_unit_type_ids:
+            session.add(UserUnit(user_id=user.id, unit_type_id=ut.id, quantity=0, level=1))
+
+    result = await session.execute(select(ResearchType))
+    all_research_types = list(result.scalars().all())
+    result = await session.execute(select(UserResearch).where(UserResearch.user_id == user.id))
+    existing_research_type_ids = {ur.research_type_id for ur in result.scalars().all()}
+    for rt in all_research_types:
+        if rt.id not in existing_research_type_ids:
+            session.add(UserResearch(user_id=user.id, research_type_id=rt.id, level=0))
+
+
 async def _load_state(session, telegram_id: int):
     """کاربر + نیروها + سفارش‌های آموزش + تحقیقات رو با هم برمی‌گردونه و سینک می‌کنه."""
     result = await session.execute(select(User).where(*user_scope(telegram_id)))
     user = result.scalar_one_or_none()
     if user is None:
         return None, [], [], []
+
+    await _backfill_missing_rows(session, user)
+    await session.flush()
 
     result = await session.execute(
         select(UserUnit).options(selectinload(UserUnit.unit_type)).where(UserUnit.user_id == user.id)
