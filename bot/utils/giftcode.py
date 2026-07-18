@@ -15,13 +15,13 @@ def generate_code(length: int = 8) -> str:
 async def create_gift_code(
     session: AsyncSession,
     admin_telegram_id: int,
-    coins_reward: int,
+    gold_reward: int,
     max_uses: int,
     custom_code: str | None = None,
 ) -> GiftCode | str:
     """خروجی: GiftCode در صورت موفقیت، وگرنه پیام خطا (str)."""
-    if coins_reward <= 0:
-        return "تعداد سکه باید مثبت باشه."
+    if gold_reward <= 0:
+        return "تعداد طلا باید مثبت باشه."
     if max_uses <= 0:
         return "تعداد دفعات استفاده باید مثبت باشه."
 
@@ -35,7 +35,7 @@ async def create_gift_code(
 
     gift_code = GiftCode(
         code=code,
-        coins_reward=coins_reward,
+        gold_reward=gold_reward,
         max_uses=max_uses,
         created_by_telegram_id=admin_telegram_id,
     )
@@ -69,10 +69,10 @@ async def redeem_gift_code(session: AsyncSession, user: User, code_str: str) -> 
         return None, "قبلاً این کد رو استفاده کردی."
 
     gift_code.uses_count += 1
-    user.coins += gift_code.coins_reward
+    user.gold += gift_code.gold_reward
     session.add(GiftCodeRedemption(gift_code_id=gift_code.id, user_id=user.id))
 
-    return gift_code.coins_reward, None
+    return gift_code.gold_reward, None
 
 
 async def get_recent_gift_codes(session: AsyncSession, limit: int = 15) -> list[GiftCode]:
