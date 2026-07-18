@@ -727,6 +727,34 @@ class GameSetting(Base):
     value: Mapped[str] = mapped_column(String(256), default="")
 
 
+class GiftCode(Base):
+    """
+    کد هدیه که ادمین از پنل مدیریت می‌سازه. هرکی با /redeem واردش کنه
+    coins_reward سکه می‌گیره، تا سقف max_uses نفر (جمعاً، نه هرکس چندبار).
+    """
+    __tablename__ = "gift_codes"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    code: Mapped[str] = mapped_column(String(32), unique=True, index=True)
+    coins_reward: Mapped[int] = mapped_column(Integer, default=0)
+    max_uses: Mapped[int] = mapped_column(Integer, default=1)
+    uses_count: Mapped[int] = mapped_column(Integer, default=0)
+    active: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_by_telegram_id: Mapped[int] = mapped_column(BigInteger)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class GiftCodeRedemption(Base):
+    """رکورد اینکه کدوم پروفایل (User.id) کدوم کد هدیه رو قبلاً زده - جلوی استفاده‌ی دوباره رو می‌گیره."""
+    __tablename__ = "gift_code_redemptions"
+    __table_args__ = (UniqueConstraint("gift_code_id", "user_id", name="uq_gift_code_user"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    gift_code_id: Mapped[int] = mapped_column(ForeignKey("gift_codes.id"))
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
+    redeemed_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
 class BannedTelegramUser(Base):
     """
     بن سراسری روی خود شخص تلگرامی (نه یک پروفایل خاص در یک روم)، چون فرد
