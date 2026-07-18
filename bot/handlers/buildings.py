@@ -6,9 +6,10 @@ from sqlalchemy.orm import selectinload
 
 from bot.database.db import get_session
 from bot.utils.context import current_room, user_scope
-from bot.database.models import BuildingType, User, UserBuilding
+from bot.database.models import BuildingType, User, UserBuilding, UserResearch
 from bot.keyboards.menus import buildings_keyboard
 from bot.utils.global_events import get_oil_production_multiplier
+from bot.utils.military import get_bonus_percent
 from bot.utils.missions import record_progress
 from bot.utils.resources import (
     collect_production,
@@ -19,6 +20,16 @@ from bot.utils.resources import (
 )
 
 router = Router(name="buildings")
+
+
+async def _get_build_time_bonus(session, user_id: int) -> float:
+    result = await session.execute(
+        select(UserResearch)
+        .options(selectinload(UserResearch.research_type))
+        .where(UserResearch.user_id == user_id)
+    )
+    researches = list(result.scalars().all())
+    return get_bonus_percent(researches, "build_time_reduction_percent")
 
 
 async def _load_user_and_buildings(session, telegram_id: int):
@@ -107,7 +118,8 @@ async def cb_upgrade_building(callback: CallbackQuery) -> None:
             await callback.answer("ساختمان پیدا نشد.", show_alert=True)
             return
 
-        error = start_upgrade(user, target, target.building_type)
+        time_bonus = await _get_build_time_bonus(session, user.id)
+        error = start_upgrade(user, target, target.building_type, time_bonus)
         if error:
             await callback.answer(error, show_alert=True)
             return
@@ -117,7 +129,7 @@ async def cb_upgrade_building(callback: CallbackQuery) -> None:
         await session.commit()
 
         # start_upgrade فقط upgrade_finish_at رو ست می‌کنه، level هنوز عوض نشده
-        duration = upgrade_duration(target.building_type, target.level)
+        duration = upgrade_duration(target.building_type, target.level, time_bonus)
         await callback.answer(
             f"✅ شروع شد! تا {int(duration.total_seconds() // 60)} دقیقه دیگه آماده‌ست.",
             show_alert=True,
