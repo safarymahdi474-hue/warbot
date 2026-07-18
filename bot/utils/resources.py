@@ -17,10 +17,11 @@ def upgrade_cost(building_type: BuildingType, current_level: int) -> dict[str, i
     }
 
 
-def upgrade_duration(building_type: BuildingType, current_level: int) -> timedelta:
+def upgrade_duration(building_type: BuildingType, current_level: int, time_reduction_percent: float = 0.0) -> timedelta:
     seconds = building_type.base_build_time_seconds * (
         settings.BUILD_TIME_GROWTH**current_level
     )
+    seconds = seconds * max(0.1, 1 - time_reduction_percent / 100)
     return timedelta(seconds=int(seconds))
 
 
@@ -32,7 +33,9 @@ def can_afford(user: User, cost: dict[str, int]) -> bool:
     return True
 
 
-def start_upgrade(user: User, user_building: UserBuilding, building_type: BuildingType) -> str | None:
+def start_upgrade(
+    user: User, user_building: UserBuilding, building_type: BuildingType, time_reduction_percent: float = 0.0
+) -> str | None:
     """
     اگه شرایط اوکی باشه، هزینه رو کم می‌کنه و ساخت/ارتقا رو شروع می‌کنه.
     خروجی: None اگه موفق بود، وگرنه پیام خطا برای نمایش به کاربر.
@@ -51,7 +54,7 @@ def start_upgrade(user: User, user_building: UserBuilding, building_type: Buildi
     user.gold -= cost["gold"]
     user.iron -= cost["iron"]
     user_building.upgrade_finish_at = datetime.utcnow() + upgrade_duration(
-        building_type, user_building.level
+        building_type, user_building.level, time_reduction_percent
     )
     return None
 
