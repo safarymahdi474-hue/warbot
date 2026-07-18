@@ -18,6 +18,7 @@ from bot.utils.admin import (
     unban_user,
 )
 from bot.utils.game_settings import are_wars_enabled, set_wars_enabled
+from bot.utils.giftcode import create_gift_code, deactivate_gift_code, get_recent_gift_codes
 from bot.utils.referral import get_referral_leaderboard
 
 router = Router(name="admin")
@@ -55,7 +56,10 @@ def admin_panel_text(wars_enabled: bool) -> str:
         "/serverstats — آمار کامل سرور\n"
         "/adminlogs — لاگ اقدامات اخیر\n"
         "/pendingstatements — بیانیه‌های در انتظار تایید\n"
-        "/referrals — رتبه‌بندی بیشترین رفرال‌گیرها\n\n"
+        "/referrals — رتبه‌بندی بیشترین رفرال‌گیرها\n"
+        "/creategift سکه تعداد_استفاده [کد_دلخواه] — ساخت کد هدیه\n"
+        "/giftcodes — لیست کدهای هدیه اخیر\n"
+        "/deactivategift کد — غیرفعال کردن یه کد هدیه\n\n"
         f"⚔️ وضعیت جنگ اتحادها: {wars_status}"
     )
 
@@ -258,6 +262,8 @@ async def cmd_admin_logs(message: Message) -> None:
         "broadcast": "📣 پیام همگانی",
         "promote_admin": "👑 ارتقای ادمین",
         "toggle_wars": "⚔️ تغییر وضعیت جنگ",
+        "create_gift_code": "🎁 ساخت کد هدیه",
+        "deactivate_gift_code": "🚫 غیرفعال‌سازی کد هدیه",
     }
     lines = ["📜 <b>لاگ اقدامات اخیر</b>\n"]
     for log in logs:
@@ -294,3 +300,102 @@ async def cmd_referrals(message: Message) -> None:
         lines.append(f"{rank_icon} {referrer.nickname}{room_note} — {count} رفرال")
 
     await message.answer("\n".join(lines), parse_mode="HTML")
+
+
+@router.message(Command("creategift"))
+async def cmd_create_gift(message: Message, command: CommandObject) -> None:
+    _, is_admin = await _require_admin(message.from_user.id)
+    if not is_admin:
+        return
+
+    args = (command.args or "").strip().split()
+    if len(args) < 2:
+        await message.answer(
+            "فرمت درست: <code>/creategift تعداد_سکه تعداد_دفعات_استفاده [کد_دلخواه]</code>\n"
+            "مثال: <code>/creategift 500 100</code>\n"
+            "اگه کد دلخواه ندی، خودکار یه کد تصادفی ساخته میشه.",
+            parse_mode="HTML",
+        )
+        return
+
+    try:
+        coins_reward = int(args[0])
+        max_uses = int(args[1])
+    except ValueError:
+        await message.answer("تعداد سکه و تعداد دفعات استفاده باید عدد باشن.")
+        return
+
+    custom_code = args[2] if len(args) >= 3 else None
+
+    async with get_session() as session:
+        gift_code = await create_gift_code(session, message.from_user.id, coins_reward, max_uses, custom_code)
+        if isinstance(gift_code, str):
+            await message.answer(f"❌ {gift_code}")
+            return
+
+        await log_action(
+            session,
+            "create_gift_code",
+            message.from_user.id,
+            None,
+            f"کد {gift_code.code} — {coins_reward} سکه — قابل استفاده توسط {max_uses} نفر",
+        )
+        await session.commit()
+        code_text = gift_code.code
+
+    await message.answer(
+        f"✅ کد هدیه ساخته شد!\n\n"
+        f"🎁 کد: <code>{code_text}</code>\n"
+        f"🪙 پاداش هر نفر: {coins_reward} سکه\n"
+        f"👥 ظرفیت: {max_uses} نفر\n\n"
+        f"کاربرا با <code>/redeem {code_text}</code> فعالش می‌کنن.",
+        parse_mode="HTML",
+    )
+
+
+@router.message(Command("giftcodes"))
+async def cmd_list_gift_codes(message: Message) -> None:
+    _, is_admin = await _require_admin(message.from_user.id)
+    if not is_admin:
+        return
+
+    async with get_session() as session:
+        codes = await get_recent_gift_codes(session)
+
+    if not codes:
+        await message.answer("هنوز هیچ کد هدیه‌ای ساخته نشده.")
+        return
+
+    lines = ["🎁 <b>کدهای هدیه اخیر</b>\n"]
+    for c in codes:
+        is_exhausted = c.uses_count >= c.max_uses
+        status = "⛔️ غیرفعال" if not c.active else ("🔴 تموم‌شده" if is_exhausted else "✅ فعال")
+        lines.append(
+            f"<code>{c.code}</code> — 🪙{c.coins_reward} — "
+            f"{c.uses_count}/{c.max_uses} استفاده — {status}"
+        )
+
+    await message.answer("\n\n".join(lines), parse_mode="HTML")
+
+
+@router.message(Command("deactivategift"))
+async def cmd_deactivate_gift(message: Message, command: CommandObject) -> None:
+    _, is_admin = await _require_admin(message.from_user.id)
+    if not is_admin:
+        return
+
+    code = (command.args or "").strip()
+    if not code:
+        await message.answer("فرمت درست: <code>/deactivategift کد</code>", parse_mode="HTML")
+        return
+
+    async with get_session() as session:
+        error = await deactivate_gift_code(session, code)
+        if error:
+            await message.answer(f"❌ {error}")
+            return
+
+        await log_action(session, "deactivate_gift_code", message.from_user.id, None, code.upper())
+        await session.commit()
+
+    await message.answer(f"✅ کد <code>{code.upper()}</code> غیرفعال شد.", parse_mode="HTML")
