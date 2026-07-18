@@ -103,7 +103,7 @@ BATTLE_EVENTS = [
 ]
 
 
-def roll_battle_event(ambush_resist_percent: float = 0.0) -> dict:
+def roll_battle_event(ambush_resist_percent: float = 0.0, crit_boost_percent: float = 0.0) -> dict:
     weights = [e["weight"] for e in BATTLE_EVENTS]
     event = random.choices(BATTLE_EVENTS, weights=weights, k=1)[0]
     if event["key"] == "ambush" and ambush_resist_percent > 0:
@@ -111,6 +111,10 @@ def roll_battle_event(ambush_resist_percent: float = 0.0) -> dict:
         # اصلی BATTLE_EVENTS رو دستکاری نمی‌کنیم، یه کپی موقت می‌سازیم.
         reduced_mult = 1 + (event["power_mult"] - 1) * max(0.0, 1 - ambush_resist_percent / 100)
         event = {**event, "power_mult": reduced_mult}
+    elif event["key"] == "critical_hit" and crit_boost_percent > 0:
+        # 🎯 دقت توپخانه: شدت ضربه‌ی بحرانی رو بیشتر می‌کنه
+        boosted_mult = 1 + (event["power_mult"] - 1) * (1 + crit_boost_percent / 100)
+        event = {**event, "power_mult": boosted_mult}
     return event
 
 
@@ -214,7 +218,8 @@ async def resolve_bot_battle(
     npc_power = int(max(attacker_power, 100) * diff["power_mult"] * random.uniform(0.85, 1.15))
 
     ambush_resist = get_bonus_percent(attacker_research, "ambush_resist_percent")
-    event = roll_battle_event(ambush_resist)
+    crit_boost = get_bonus_percent(attacker_research, "critical_hit_boost_percent")
+    event = roll_battle_event(ambush_resist, crit_boost)
     if event["side"] in ("attacker", "both"):
         attacker_power = int(attacker_power * event["power_mult"])
     if event["side"] in ("defender", "both"):
@@ -304,7 +309,8 @@ async def resolve_pvp_battle(
     )
 
     ambush_resist = get_bonus_percent(attacker_research, "ambush_resist_percent")
-    event = roll_battle_event(ambush_resist)
+    crit_boost = get_bonus_percent(attacker_research, "critical_hit_boost_percent")
+    event = roll_battle_event(ambush_resist, crit_boost)
     if event["side"] in ("attacker", "both"):
         attacker_power = int(attacker_power * event["power_mult"])
     if event["side"] in ("defender", "both"):
