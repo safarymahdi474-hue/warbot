@@ -41,6 +41,8 @@ def build_resources_text(user: User, gained: dict[str, int], active_event_labels
 
     if any(gained.values()):
         gained_parts = []
+        if gained.get("gold"):
+            gained_parts.append(f"💰+{gained['gold']}")
         if gained.get("food"):
             gained_parts.append(f"🌾+{gained['food']}")
         if gained.get("iron"):
