@@ -4,12 +4,13 @@ from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMar
 from sqlalchemy import select
 
 from bot.database.db import get_session
-from bot.utils.context import user_scope
+from bot.utils.context import current_room, user_scope
 from bot.database.models import User
 from bot.utils.achievements import check_referral_milestone
 from bot.utils.admin import ensure_admin_flag
 from bot.utils.progression import regen_energy, xp_required_for_level
 from bot.utils.referral import count_referrals, get_referred_users
+from bot.utils.room_settings import deliver_sensitive_content
 
 router = Router(name="profile")
 
@@ -70,7 +71,15 @@ async def cmd_profile(message: Message) -> None:
     if user is None:
         await message.answer("هنوز ثبت‌نام نکردی! دستور /start رو بزن.")
         return
-    await message.answer(build_profile_text(user), reply_markup=profile_keyboard(), parse_mode="HTML")
+
+    text = build_profile_text(user)
+    sent_privately, group_note = await deliver_sensitive_content(
+        message.bot, current_room(), message.chat.type, message.from_user.id, text, profile_keyboard()
+    )
+    if sent_privately:
+        await message.answer(group_note)
+        return
+    await message.answer(text, reply_markup=profile_keyboard(), parse_mode="HTML")
 
 
 @router.callback_query(F.data == "show_profile")
@@ -79,7 +88,15 @@ async def cb_profile(callback: CallbackQuery) -> None:
     if user is None:
         await callback.answer("هنوز ثبت‌نام نکردی! /start رو بزن.", show_alert=True)
         return
-    await callback.message.answer(build_profile_text(user), reply_markup=profile_keyboard(), parse_mode="HTML")
+
+    text = build_profile_text(user)
+    sent_privately, group_note = await deliver_sensitive_content(
+        callback.bot, current_room(), callback.message.chat.type, callback.from_user.id, text, profile_keyboard()
+    )
+    if sent_privately:
+        await callback.answer(group_note, show_alert=True)
+        return
+    await callback.message.answer(text, reply_markup=profile_keyboard(), parse_mode="HTML")
     await callback.answer()
 
 
