@@ -9,6 +9,9 @@ from bot.utils.context import current_room, user_scope
 from bot.database.models import User, UserBuilding
 from bot.utils.global_events import get_active_events, get_oil_production_multiplier
 from bot.utils.resources import collect_production, finish_ready_upgrades, recalculate_storage_caps
+from bot.utils.room_settings import deliver_sensitive_content
+
+NOT_REGISTERED_MSG = "هنوز ثبت‌نام نکردی! دستور /start رو بزن."
 
 router = Router(name="resources")
 
@@ -57,7 +60,7 @@ async def _get_resources_text(telegram_id: int) -> str:
         result = await session.execute(select(User).where(*user_scope(telegram_id)))
         user = result.scalar_one_or_none()
         if user is None:
-            return "هنوز ثبت‌نام نکردی! دستور /start رو بزن."
+            return NOT_REGISTERED_MSG
 
         result = await session.execute(
             select(UserBuilding)
@@ -85,12 +88,33 @@ async def _get_resources_text(telegram_id: int) -> str:
 @router.message(Command("resources"))
 async def cmd_resources(message: Message) -> None:
     text = await _get_resources_text(message.from_user.id)
+    if text == NOT_REGISTERED_MSG:
+        await message.answer(text)
+        return
+
+    sent_privately, group_note = await deliver_sensitive_content(
+        message.bot, current_room(), message.chat.type, message.from_user.id, text, resources_keyboard()
+    )
+    if sent_privately:
+        await message.answer(group_note)
+        return
     await message.answer(text, reply_markup=resources_keyboard(), parse_mode="HTML")
 
 
 @router.callback_query(F.data == "show_resources")
 async def cb_resources(callback: CallbackQuery) -> None:
     text = await _get_resources_text(callback.from_user.id)
+    if text == NOT_REGISTERED_MSG:
+        await callback.answer(text, show_alert=True)
+        return
+
+    sent_privately, group_note = await deliver_sensitive_content(
+        callback.bot, current_room(), callback.message.chat.type, callback.from_user.id, text, resources_keyboard()
+    )
+    if sent_privately:
+        await callback.answer(group_note, show_alert=True)
+        return
+
     try:
         await callback.message.edit_text(text, reply_markup=resources_keyboard(), parse_mode="HTML")
     except Exception:
