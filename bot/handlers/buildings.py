@@ -18,6 +18,9 @@ from bot.utils.resources import (
     start_upgrade,
     upgrade_duration,
 )
+from bot.utils.room_settings import deliver_sensitive_content
+
+NOT_REGISTERED_MSG = "هنوز ثبت‌نام نکردی! دستور /start رو بزن."
 
 router = Router(name="buildings")
 
@@ -78,7 +81,7 @@ async def _show_buildings(user_id_telegram: int) -> tuple[str, "InlineKeyboardMa
     async with get_session() as session:
         user, user_buildings = await _load_user_and_buildings(session, user_id_telegram)
         if user is None:
-            return "هنوز ثبت‌نام نکردی! دستور /start رو بزن.", None
+            return NOT_REGISTERED_MSG, None
         await _sync(session, user, user_buildings)
         text = build_buildings_text(user_buildings)
         keyboard = buildings_keyboard(user_buildings)
@@ -88,12 +91,33 @@ async def _show_buildings(user_id_telegram: int) -> tuple[str, "InlineKeyboardMa
 @router.message(Command("buildings"))
 async def cmd_buildings(message: Message) -> None:
     text, keyboard = await _show_buildings(message.from_user.id)
+    if text == NOT_REGISTERED_MSG:
+        await message.answer(text)
+        return
+
+    sent_privately, group_note = await deliver_sensitive_content(
+        message.bot, current_room(), message.chat.type, message.from_user.id, text, keyboard
+    )
+    if sent_privately:
+        await message.answer(group_note)
+        return
     await message.answer(text, reply_markup=keyboard, parse_mode="HTML")
 
 
 @router.callback_query(F.data == "show_buildings")
 async def cb_show_buildings(callback: CallbackQuery) -> None:
     text, keyboard = await _show_buildings(callback.from_user.id)
+    if text == NOT_REGISTERED_MSG:
+        await callback.answer(text, show_alert=True)
+        return
+
+    sent_privately, group_note = await deliver_sensitive_content(
+        callback.bot, current_room(), callback.message.chat.type, callback.from_user.id, text, keyboard
+    )
+    if sent_privately:
+        await callback.answer(group_note, show_alert=True)
+        return
+
     try:
         await callback.message.edit_text(text, reply_markup=keyboard, parse_mode="HTML")
     except Exception:
@@ -136,6 +160,11 @@ async def cb_upgrade_building(callback: CallbackQuery) -> None:
         )
 
     text, keyboard = await _show_buildings(callback.from_user.id)
+    sent_privately, group_note = await deliver_sensitive_content(
+        callback.bot, current_room(), callback.message.chat.type, callback.from_user.id, text, keyboard
+    )
+    if sent_privately:
+        return
     try:
         await callback.message.edit_text(text, reply_markup=keyboard, parse_mode="HTML")
     except Exception:
