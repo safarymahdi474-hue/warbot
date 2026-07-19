@@ -699,6 +699,11 @@ class Room(Base):
     title: Mapped[str] = mapped_column(String(128), default="گروه")
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
+    # --- تنظیمات گروه (قابل کنترل توسط ادمین‌های خود گروه تلگرامی) ---
+    # وقتی روشن باشه، جواب دستورهای حساس (پروفایل/منابع/ارتش/ساختمان) به‌جای
+    # پابلیک شدن تو گروه، پیوی خود شخص فرستاده میشه تا لو نره.
+    privacy_mode: Mapped[bool] = mapped_column(Boolean, default=False)
+
 
 class GlobalEvent(Base):
     """
