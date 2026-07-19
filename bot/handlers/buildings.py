@@ -35,11 +35,25 @@ async def _get_build_time_bonus(session, user_id: int) -> float:
     return get_bonus_percent(researches, "build_time_reduction_percent")
 
 
+async def _backfill_missing_buildings(session, user: User) -> None:
+    """اگه بعد از ثبت‌نام کاربر، نوع ساختمان جدیدی (مثل معدن طلا) اضافه شده باشه، می‌سازتش."""
+    result = await session.execute(select(BuildingType))
+    all_building_types = list(result.scalars().all())
+    result = await session.execute(select(UserBuilding).where(UserBuilding.user_id == user.id))
+    existing_building_type_ids = {ub.building_type_id for ub in result.scalars().all()}
+    for bt in all_building_types:
+        if bt.id not in existing_building_type_ids:
+            session.add(UserBuilding(user_id=user.id, building_type_id=bt.id, level=0))
+
+
 async def _load_user_and_buildings(session, telegram_id: int):
     result = await session.execute(select(User).where(*user_scope(telegram_id)))
     user = result.scalar_one_or_none()
     if user is None:
         return None, []
+
+    await _backfill_missing_buildings(session, user)
+    await session.flush()
 
     result = await session.execute(
         select(UserBuilding)
