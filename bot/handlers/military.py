@@ -5,7 +5,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 
 from bot.database.db import get_session
-from bot.utils.context import user_scope
+from bot.utils.context import current_room, user_scope
 from bot.database.models import (
     ResearchType,
     TrainingOrder,
@@ -32,6 +32,9 @@ from bot.utils.military import (
     unit_upgrade_duration,
 )
 from bot.utils.missions import record_progress
+from bot.utils.room_settings import deliver_sensitive_content
+
+NOT_REGISTERED_MSG = "هنوز ثبت‌نام نکردی! دستور /start رو بزن."
 
 router = Router(name="military")
 
@@ -169,7 +172,7 @@ async def _army_view(telegram_id: int):
     async with get_session() as session:
         user, user_units, orders, user_researches = await _load_state(session, telegram_id)
         if user is None:
-            return "هنوز ثبت‌نام نکردی! دستور /start رو بزن.", None
+            return NOT_REGISTERED_MSG, None
         atk_bonus = _attack_bonus(user_researches)
         def_bonus = _defense_bonus(user_researches)
         text = build_army_text(user_units, orders, atk_bonus, def_bonus)
@@ -179,12 +182,33 @@ async def _army_view(telegram_id: int):
 @router.message(Command("army"))
 async def cmd_army(message: Message) -> None:
     text, keyboard = await _army_view(message.from_user.id)
+    if text == NOT_REGISTERED_MSG:
+        await message.answer(text)
+        return
+
+    sent_privately, group_note = await deliver_sensitive_content(
+        message.bot, current_room(), message.chat.type, message.from_user.id, text, keyboard
+    )
+    if sent_privately:
+        await message.answer(group_note)
+        return
     await message.answer(text, reply_markup=keyboard, parse_mode="HTML")
 
 
 @router.callback_query(F.data == "show_army")
 async def cb_army(callback: CallbackQuery) -> None:
     text, keyboard = await _army_view(callback.from_user.id)
+    if text == NOT_REGISTERED_MSG:
+        await callback.answer(text, show_alert=True)
+        return
+
+    sent_privately, group_note = await deliver_sensitive_content(
+        callback.bot, current_room(), callback.message.chat.type, callback.from_user.id, text, keyboard
+    )
+    if sent_privately:
+        await callback.answer(group_note, show_alert=True)
+        return
+
     try:
         await callback.message.edit_text(text, reply_markup=keyboard, parse_mode="HTML")
     except Exception:
