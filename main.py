@@ -23,6 +23,7 @@ from bot.handlers import (
     profile,
     resources,
     rewards,
+    room_settings,
     settings as settings_handler,
     shop,
     start,
@@ -66,6 +67,7 @@ async def main() -> None:
     dp.include_router(settings_handler.router)
     dp.include_router(support.router)
     dp.include_router(giftcode.router)
+    dp.include_router(room_settings.router)
     dp.include_router(admin.router)
 
     await bot.delete_webhook(drop_pending_updates=True)
