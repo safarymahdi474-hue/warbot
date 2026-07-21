@@ -272,6 +272,18 @@ DEFAULT_BUILDING_TYPES = [
         "base_build_time_seconds": 100,
         "max_level": 20,
     },
+    {
+        "key": "uranium_mine",
+        "name_fa": "معدن اورانیوم",
+        "icon": "☢️",
+        "produces": "uranium",
+        "base_production_per_hour": 3,
+        "storage_bonus_per_level": 0,
+        "base_cost_gold": 800,
+        "base_cost_iron": 200,
+        "base_build_time_seconds": 240,
+        "max_level": 15,
+    },
 ]
 
 # لیست اولیه‌ی انواع نیرو - فاز ۳
@@ -342,6 +354,7 @@ DEFAULT_UNIT_TYPES = [
         "cost_gold": 3200,
         "cost_iron": 450,
         "cost_oil": 300,
+        "cost_uranium": 40,
         "train_seconds_per_unit": 420,
         "min_player_level": 14,
         "max_level": 10,
@@ -412,6 +425,7 @@ DEFAULT_UNIT_TYPES = [
         "cost_gold": 4200,
         "cost_iron": 700,
         "cost_oil": 350,
+        "cost_uranium": 90,
         "train_seconds_per_unit": 480,
         "min_player_level": 15,
         "max_level": 10,
@@ -426,6 +440,7 @@ DEFAULT_UNIT_TYPES = [
         "cost_gold": 8000,
         "cost_iron": 1400,
         "cost_oil": 900,
+        "cost_uranium": 180,
         "train_seconds_per_unit": 700,
         "min_player_level": 18,
         "max_level": 10,
