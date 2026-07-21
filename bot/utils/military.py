@@ -19,6 +19,7 @@ def training_cost(unit_type: UnitType, quantity: int) -> dict[str, int]:
         "gold": unit_type.cost_gold * quantity,
         "iron": unit_type.cost_iron * quantity,
         "oil": unit_type.cost_oil * quantity,
+        "uranium": unit_type.cost_uranium * quantity,
     }
 
 
@@ -29,7 +30,23 @@ def training_duration(unit_type: UnitType, quantity: int, training_speed_percent
 
 
 def can_afford(user: User, cost: dict[str, int]) -> bool:
-    return user.gold >= cost["gold"] and user.iron >= cost["iron"] and user.oil >= cost["oil"]
+    return (
+        user.gold >= cost["gold"]
+        and user.iron >= cost["iron"]
+        and user.oil >= cost["oil"]
+        and user.uranium >= cost.get("uranium", 0)
+    )
+
+
+def _format_cost_parts(cost: dict[str, int]) -> list[str]:
+    parts = [f"💰{cost['gold']} طلا"]
+    if cost["iron"]:
+        parts.append(f"⛏️{cost['iron']} آهن")
+    if cost["oil"]:
+        parts.append(f"🛢️{cost['oil']} نفت")
+    if cost.get("uranium"):
+        parts.append(f"☢️{cost['uranium']} اورانیوم")
+    return parts
 
 
 def start_training(
@@ -46,16 +63,12 @@ def start_training(
 
     cost = training_cost(unit_type, quantity)
     if not can_afford(user, cost):
-        parts = [f"💰{cost['gold']} طلا"]
-        if cost["iron"]:
-            parts.append(f"⛏️{cost['iron']} آهن")
-        if cost["oil"]:
-            parts.append(f"🛢️{cost['oil']} نفت")
-        return "منابع کافی نداری. هزینه لازم: " + " + ".join(parts)
+        return "منابع کافی نداری. هزینه لازم: " + " + ".join(_format_cost_parts(cost))
 
     user.gold -= cost["gold"]
     user.iron -= cost["iron"]
     user.oil -= cost["oil"]
+    user.uranium -= cost["uranium"]
 
     duration = training_duration(unit_type, quantity, training_speed_percent)
     return TrainingOrder(
@@ -93,6 +106,7 @@ def unit_upgrade_cost(unit_type: UnitType, current_level: int) -> dict[str, int]
         "gold": int(unit_type.cost_gold * 2 * growth),
         "iron": int(unit_type.cost_iron * 2 * growth),
         "oil": int(unit_type.cost_oil * 2 * growth),
+        "uranium": int(unit_type.cost_uranium * 2 * growth),
     }
 
 
@@ -111,16 +125,12 @@ def start_unit_upgrade(user: User, user_unit: UserUnit, unit_type: UnitType) -> 
 
     cost = unit_upgrade_cost(unit_type, user_unit.level)
     if not can_afford(user, cost):
-        parts = [f"💰{cost['gold']} طلا"]
-        if cost["iron"]:
-            parts.append(f"⛏️{cost['iron']} آهن")
-        if cost["oil"]:
-            parts.append(f"🛢️{cost['oil']} نفت")
-        return "منابع کافی نداری. هزینه لازم: " + " + ".join(parts)
+        return "منابع کافی نداری. هزینه لازم: " + " + ".join(_format_cost_parts(cost))
 
     user.gold -= cost["gold"]
     user.iron -= cost["iron"]
     user.oil -= cost["oil"]
+    user.uranium -= cost["uranium"]
     user_unit.upgrade_finish_at = datetime.utcnow() + unit_upgrade_duration(user_unit.level)
     return None
 
@@ -162,8 +172,7 @@ def research_cost(research_type: ResearchType, current_level: int) -> dict[str, 
 
 
 def research_duration(research_type: ResearchType, current_level: int) -> timedelta:
-    seconds = research_type.base_research_seconds * (settings.RESEARCH_TIME_GROWTH**current_level)
-    return timedelta(seconds=int(seconds))
+    return timedelta(seconds=research_type.base_research_seconds * (settings.RESEARCH_TIME_GROWTH**current_level))
 
 
 def start_research(user: User, user_research: UserResearch, research_type: ResearchType) -> str | None:
@@ -173,7 +182,7 @@ def start_research(user: User, user_research: UserResearch, research_type: Resea
         return "این تحقیق به حداکثر سطح رسیده."
 
     cost = research_cost(research_type, user_research.level)
-    if not can_afford(user, cost):
+    if not (user.gold >= cost["gold"] and user.iron >= cost["iron"] and user.oil >= cost["oil"]):
         parts = [f"💰{cost['gold']} طلا"]
         if cost["iron"]:
             parts.append(f"⛏️{cost['iron']} آهن")
