@@ -25,6 +25,25 @@ async def set_bool_setting(session: AsyncSession, key: str, value: bool) -> None
         row.value = "1" if value else "0"
 
 
+async def get_int_setting(session: AsyncSession, key: str, default: int) -> int:
+    row = await session.get(GameSetting, key)
+    if row is None:
+        return default
+    try:
+        return int(row.value)
+    except ValueError:
+        return default
+
+
+async def set_int_setting(session: AsyncSession, key: str, value: int) -> None:
+    row = await session.get(GameSetting, key)
+    if row is None:
+        row = GameSetting(key=key, value=str(value))
+        session.add(row)
+    else:
+        row.value = str(value)
+
+
 async def are_wars_enabled(session: AsyncSession) -> bool:
     return await get_bool_setting(session, WARS_ENABLED_KEY, default=True)
 
