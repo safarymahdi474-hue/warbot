@@ -38,6 +38,7 @@ def build_resources_text(user: User, gained: dict[str, int], active_event_labels
     lines.append(f"🌾 غذا: {user.food}/{user.max_food}\n{bar(user.food, user.max_food)}")
     lines.append(f"⛏️ آهن: {user.iron}/{user.max_iron}\n{bar(user.iron, user.max_iron)}")
     lines.append(f"🛢️ نفت: {user.oil}/{user.max_oil}\n{bar(user.oil, user.max_oil)}")
+    lines.append(f"☢️ اورانیوم: {user.uranium}/{user.max_uranium}\n{bar(user.uranium, user.max_uranium)}")
 
     if any(gained.values()):
         gained_parts = []
@@ -49,6 +50,8 @@ def build_resources_text(user: User, gained: dict[str, int], active_event_labels
             gained_parts.append(f"⛏️+{gained['iron']}")
         if gained.get("oil"):
             gained_parts.append(f"🛢️+{gained['oil']}")
+        if gained.get("uranium"):
+            gained_parts.append(f"☢️+{gained['uranium']}")
         lines.append("\n✨ از آخرین بازدید: " + " | ".join(gained_parts))
 
     if active_event_labels:
