@@ -1,21 +1,58 @@
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from bot.config import settings
 from bot.database.models import User
+from bot.utils.game_settings import get_int_setting, set_int_setting
 
-SELL_PRICES = {
+DEFAULT_SELL_PRICES = {
     "iron": settings.EXCHANGE_SELL_PRICE_IRON,
     "oil": settings.EXCHANGE_SELL_PRICE_OIL,
     "food": settings.EXCHANGE_SELL_PRICE_FOOD,
+    "uranium": settings.EXCHANGE_SELL_PRICE_URANIUM,
 }
 
-RESOURCE_LABELS = {"iron": "⛏️ آهن", "oil": "🛢️ نفت", "food": "🌾 غذا"}
+RESOURCE_LABELS = {
+    "iron": "⛏️ آهن",
+    "oil": "🛢️ نفت",
+    "food": "🌾 غذا",
+    "uranium": "☢️ اورانیوم",
+}
+
+_PRICE_KEY_PREFIX = "exchange_price_"
+_MARKUP_KEY = "exchange_buy_markup_percent"
 
 
-def buy_price(resource_type: str) -> int:
-    sell = SELL_PRICES[resource_type]
-    return max(sell + 1, round(sell * (1 + settings.EXCHANGE_BUY_MARKUP_PERCENT / 100)))
+async def get_sell_price(session: AsyncSession, resource_type: str) -> int:
+    """قیمتی که ربات این منبع رو می‌خره (قابل تغییر توسط ادمین، وگرنه پیش‌فرض config)."""
+    default = DEFAULT_SELL_PRICES[resource_type]
+    return await get_int_setting(session, f"{_PRICE_KEY_PREFIX}{resource_type}", default)
 
 
-def sell_resource(user: User, resource_type: str, quantity: int) -> tuple[str | None, str | None]:
+async def set_sell_price(session: AsyncSession, resource_type: str, price: int) -> None:
+    await set_int_setting(session, f"{_PRICE_KEY_PREFIX}{resource_type}", price)
+
+
+async def get_all_sell_prices(session: AsyncSession) -> dict[str, int]:
+    return {rt: await get_sell_price(session, rt) for rt in DEFAULT_SELL_PRICES}
+
+
+async def get_buy_markup_percent(session: AsyncSession) -> int:
+    return await get_int_setting(session, _MARKUP_KEY, settings.EXCHANGE_BUY_MARKUP_PERCENT)
+
+
+async def set_buy_markup_percent(session: AsyncSession, percent: int) -> None:
+    await set_int_setting(session, _MARKUP_KEY, percent)
+
+
+async def buy_price(session: AsyncSession, resource_type: str) -> int:
+    sell = await get_sell_price(session, resource_type)
+    markup = await get_buy_markup_percent(session)
+    return max(sell + 1, round(sell * (1 + markup / 100)))
+
+
+async def sell_resource(
+    session: AsyncSession, user: User, resource_type: str, quantity: int
+) -> tuple[str | None, str | None]:
     """خروجی: (پیام موفقیت, پیام خطا) - دقیقاً یکی از این دو پر میشه."""
     if quantity <= 0:
         return None, "تعداد باید مثبت باشه."
@@ -23,18 +60,21 @@ def sell_resource(user: User, resource_type: str, quantity: int) -> tuple[str | 
     if current < quantity:
         return None, f"به این مقدار {RESOURCE_LABELS[resource_type]} نداری."
 
-    gold_gained = SELL_PRICES[resource_type] * quantity
+    sell_price = await get_sell_price(session, resource_type)
+    gold_gained = sell_price * quantity
     setattr(user, resource_type, current - quantity)
     user.gold += gold_gained
     return f"✅ {quantity} {RESOURCE_LABELS[resource_type]} فروختی و 💰{gold_gained} گرفتی.", None
 
 
-def buy_resource(user: User, resource_type: str, quantity: int) -> tuple[str | None, str | None]:
+async def buy_resource(
+    session: AsyncSession, user: User, resource_type: str, quantity: int
+) -> tuple[str | None, str | None]:
     """خروجی: (پیام موفقیت, پیام خطا) - دقیقاً یکی از این دو پر میشه."""
     if quantity <= 0:
         return None, "تعداد باید مثبت باشه."
 
-    price = buy_price(resource_type)
+    price = await buy_price(session, resource_type)
     max_field = f"max_{resource_type}"
     current = getattr(user, resource_type)
     cap = getattr(user, max_field)
