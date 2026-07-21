@@ -5,6 +5,7 @@ from aiogram import Bot, Dispatcher
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
 from aiogram.fsm.storage.memory import MemoryStorage
+from aiogram.types import BotCommand
 
 from bot.config import settings
 from bot.database.db import init_db
@@ -36,6 +37,45 @@ from bot.middlewares.room_context import RoomContextMiddleware
 logging.basicConfig(level=logging.INFO)
 
 
+PLAYER_COMMANDS = [
+    BotCommand(command="start", description="🎮 ثبت‌نام یا شروع مجدد"),
+    BotCommand(command="profile", description="👤 پروفایل من"),
+    BotCommand(command="resources", description="📦 منابع من"),
+    BotCommand(command="buildings", description="🏗️ ساختمان‌ها"),
+    BotCommand(command="army", description="⚔️ ارتش من"),
+    BotCommand(command="research", description="🔬 تحقیق و توسعه"),
+    BotCommand(command="attack", description="🗡️ حمله (بات یا PvP)"),
+    BotCommand(command="reports", description="📜 گزارش نبردهای اخیر"),
+    BotCommand(command="pvpseason", description="📅 رتبه‌بندی هفتگی PvP"),
+    BotCommand(command="missions", description="🎯 ماموریت‌های روزانه و هفتگی"),
+    BotCommand(command="rewards", description="🎁 صندوق روزانه، هدیه، گردونه شانس"),
+    BotCommand(command="alliance", description="🏛️ مدیریت اتحاد"),
+    BotCommand(command="asay", description="💬 پیام در چت اتحاد"),
+    BotCommand(command="statement", description="📜 بیانیه ملی"),
+    BotCommand(command="inventory", description="🎒 اینونتوری و مصرف آیتم"),
+    BotCommand(command="market", description="🏪 بازار، صرافی و حراج"),
+    BotCommand(command="leaderboard", description="🏆 جدول رتبه‌بندی"),
+    BotCommand(command="achievements", description="🏅 دستاوردها"),
+    BotCommand(command="shop", description="🛍️ فروشگاه (تلگرام استارز)"),
+    BotCommand(command="pm", description="✉️ پیام خصوصی به بازیکن دیگه"),
+    BotCommand(command="inbox", description="📬 صندوق پیام‌های خصوصی"),
+    BotCommand(command="settings", description="⚙️ تنظیمات اعلان"),
+    BotCommand(command="redeem", description="🎁 فعال‌سازی کد هدیه"),
+    BotCommand(command="roomsettings", description="🔒 تنظیمات این گروه (ادمین گروه)"),
+    BotCommand(command="support", description="🆘 ثبت درخواست پشتیبانی"),
+    BotCommand(command="mytickets", description="🎫 تیکت‌های پشتیبانی من"),
+]
+
+
+async def set_bot_commands(bot: Bot) -> None:
+    """
+    لیست دستورها رو تو منوی «/» تلگرام (همون آیکون کنار کیبورد) ثبت می‌کنه.
+    فقط دستورهای مخصوص بازیکن؛ دستورهای ادمین (/ban, /setprice, ...) عمداً
+    اینجا نیستن تا برای کاربر عادی لو نرن - اونا فقط با تایپ مستقیم کار می‌کنن.
+    """
+    await bot.set_my_commands(PLAYER_COMMANDS)
+
+
 async def main() -> None:
     await init_db()
 
@@ -43,6 +83,7 @@ async def main() -> None:
         token=settings.BOT_TOKEN,
         default=DefaultBotProperties(parse_mode=ParseMode.HTML),
     )
+    await set_bot_commands(bot)
     dp = Dispatcher(storage=MemoryStorage())
     dp.message.middleware(RoomContextMiddleware())
     dp.callback_query.middleware(RoomContextMiddleware())
