@@ -82,10 +82,12 @@ class User(Base):
     oil: Mapped[int] = mapped_column(Integer, default=0)
     iron: Mapped[int] = mapped_column(Integer, default=0)
     food: Mapped[int] = mapped_column(Integer, default=200)  # کمی غذای اولیه
+    uranium: Mapped[int] = mapped_column(Integer, default=0)
 
     max_oil: Mapped[int] = mapped_column(Integer, default=1000)
     max_iron: Mapped[int] = mapped_column(Integer, default=1000)
     max_food: Mapped[int] = mapped_column(Integer, default=1000)
+    max_uranium: Mapped[int] = mapped_column(Integer, default=200)
 
     last_resource_collect: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
@@ -211,6 +213,7 @@ class UnitType(Base):
     cost_gold: Mapped[int] = mapped_column(Integer, default=0)
     cost_iron: Mapped[int] = mapped_column(Integer, default=0)
     cost_oil: Mapped[int] = mapped_column(Integer, default=0)
+    cost_uranium: Mapped[int] = mapped_column(Integer, default=0)
     train_seconds_per_unit: Mapped[int] = mapped_column(Integer, default=10)
 
     min_player_level: Mapped[int] = mapped_column(Integer, default=1)
