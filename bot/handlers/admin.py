@@ -17,6 +17,13 @@ from bot.utils.admin import (
     log_action,
     unban_user,
 )
+from bot.utils.exchange import (
+    RESOURCE_LABELS as EXCHANGE_RESOURCE_LABELS,
+    get_all_sell_prices,
+    get_buy_markup_percent,
+    set_buy_markup_percent,
+    set_sell_price,
+)
 from bot.utils.game_settings import are_wars_enabled, set_wars_enabled
 from bot.utils.giftcode import create_gift_code, deactivate_gift_code, get_recent_gift_codes
 from bot.utils.referral import get_referral_leaderboard
@@ -59,7 +66,10 @@ def admin_panel_text(wars_enabled: bool) -> str:
         "/referrals — رتبه‌بندی بیشترین رفرال‌گیرها\n"
         "/creategift طلا تعداد_استفاده [کد_دلخواه] — ساخت کد هدیه\n"
         "/giftcodes — لیست کدهای هدیه اخیر\n"
-        "/deactivategift کد — غیرفعال کردن یه کد هدیه\n\n"
+        "/deactivategift کد — غیرفعال کردن یه کد هدیه\n"
+        "/prices — نمایش قیمت‌های فعلی صرافی\n"
+        "/setprice ماده قیمت — تغییر قیمت فروش یه ماده (iron/oil/food/uranium)\n"
+        "/setmarkup درصد — تغییر درصد سود خرید از صرافی\n\n"
         f"⚔️ وضعیت جنگ اتحادها: {wars_status}"
     )
 
@@ -264,6 +274,8 @@ async def cmd_admin_logs(message: Message) -> None:
         "toggle_wars": "⚔️ تغییر وضعیت جنگ",
         "create_gift_code": "🎁 ساخت کد هدیه",
         "deactivate_gift_code": "🚫 غیرفعال‌سازی کد هدیه",
+        "set_exchange_price": "💱 تغییر قیمت صرافی",
+        "set_exchange_markup": "📈 تغییر درصد سود صرافی",
     }
     lines = ["📜 <b>لاگ اقدامات اخیر</b>\n"]
     for log in logs:
@@ -399,3 +411,124 @@ async def cmd_deactivate_gift(message: Message, command: CommandObject) -> None:
         await session.commit()
 
     await message.answer(f"✅ کد <code>{code.upper()}</code> غیرفعال شد.", parse_mode="HTML")
+
+
+# ---------------------------------------------------------------------------
+# مدیریت قیمت‌های صرافی (بازار آنی)
+# ---------------------------------------------------------------------------
+
+async def _announce_market_change(bot, text: str) -> None:
+    """اگه کانال بیانیه تنظیم شده باشه، خبر تغییر قیمت رو اونجا پست می‌کنه."""
+    if not settings.STATEMENT_CHANNEL_ID:
+        return
+    try:
+        await bot.send_message(settings.STATEMENT_CHANNEL_ID, text, parse_mode="HTML")
+    except Exception:
+        pass
+
+
+@router.message(Command("prices"))
+async def cmd_show_prices(message: Message) -> None:
+    _, is_admin = await _require_admin(message.from_user.id)
+    if not is_admin:
+        return
+
+    async with get_session() as session:
+        sell_prices = await get_all_sell_prices(session)
+        markup = await get_buy_markup_percent(session)
+
+    lines = ["💱 <b>قیمت‌های فعلی صرافی</b>\n"]
+    for rt, label in EXCHANGE_RESOURCE_LABELS.items():
+        buy = max(sell_prices[rt] + 1, round(sell_prices[rt] * (1 + markup / 100)))
+        lines.append(f"{label}: فروش 💰{sell_prices[rt]} | خرید 💰{buy}")
+    lines.append(f"\n📈 درصد سود خرید: {markup}٪")
+    lines.append(
+        "\nبرای تغییر: <code>/setprice ماده قیمت</code> (مثال: <code>/setprice iron 12</code>)"
+        "\nماده‌های معتبر: iron, oil, food, uranium"
+    )
+    await message.answer("\n".join(lines), parse_mode="HTML")
+
+
+@router.message(Command("setprice"))
+async def cmd_set_price(message: Message, command: CommandObject) -> None:
+    _, is_admin = await _require_admin(message.from_user.id)
+    if not is_admin:
+        return
+
+    args = (command.args or "").strip().split()
+    if len(args) != 2:
+        await message.answer(
+            "فرمت درست: <code>/setprice ماده قیمت</code>\n"
+            "ماده‌های معتبر: iron, oil, food, uranium\n"
+            "مثال: <code>/setprice iron 12</code>",
+            parse_mode="HTML",
+        )
+        return
+
+    resource_type = args[0].strip().lower()
+    if resource_type not in EXCHANGE_RESOURCE_LABELS:
+        await message.answer(
+            "این ماده معتبر نیست. یکی از این‌ها رو بزن: iron, oil, food, uranium"
+        )
+        return
+
+    try:
+        price = int(args[1])
+        assert price > 0
+    except (ValueError, AssertionError):
+        await message.answer("قیمت باید یه عدد مثبت باشه.")
+        return
+
+    async with get_session() as session:
+        old_prices = await get_all_sell_prices(session)
+        old_price = old_prices[resource_type]
+        await set_sell_price(session, resource_type, price)
+        await log_action(
+            session,
+            "set_exchange_price",
+            message.from_user.id,
+            None,
+            f"{resource_type}: {old_price} -> {price}",
+        )
+        await session.commit()
+
+    label = EXCHANGE_RESOURCE_LABELS[resource_type]
+    await message.answer(f"✅ قیمت فروش {label} از 💰{old_price} به 💰{price} تغییر کرد.", parse_mode="HTML")
+
+    await _announce_market_change(
+        message.bot,
+        f"📢 <b>تغییر قیمت بازار آنی</b>\n\n{label} حالا 💰{price} برای هر واحد ارزش داره.",
+    )
+
+
+@router.message(Command("setmarkup"))
+async def cmd_set_markup(message: Message, command: CommandObject) -> None:
+    _, is_admin = await _require_admin(message.from_user.id)
+    if not is_admin:
+        return
+
+    arg = (command.args or "").strip()
+    try:
+        percent = int(arg)
+        assert percent >= 0
+    except (ValueError, AssertionError):
+        await message.answer(
+            "فرمت درست: <code>/setmarkup درصد</code>\nمثال: <code>/setmarkup 15</code>",
+            parse_mode="HTML",
+        )
+        return
+
+    async with get_session() as session:
+        old_percent = await get_buy_markup_percent(session)
+        await set_buy_markup_percent(session, percent)
+        await log_action(
+            session, "set_exchange_markup", message.from_user.id, None, f"{old_percent}% -> {percent}%"
+        )
+        await session.commit()
+
+    await message.answer(f"✅ درصد سود خرید از صرافی از {old_percent}٪ به {percent}٪ تغییر کرد.")
+
+    await _announce_market_change(
+        message.bot,
+        f"📢 <b>تغییر تنظیمات بازار آنی</b>\n\nدرصد سود خرید از صرافی به {percent}٪ تغییر کرد.",
+    )
