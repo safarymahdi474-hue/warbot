@@ -21,6 +21,7 @@ class Settings:
 
     # --- منابع و ساختمان (فاز ۲) ---
     BASE_RESOURCE_STORAGE: int = 1000  # سقف اولیه‌ی هر منبع (نفت/آهن/غذا) قبل از ساخت انبار
+    BASE_URANIUM_STORAGE: int = 200  # اورانیوم کمیابه، سقفش خیلی کوچیک‌تره
     RESOURCE_COST_GROWTH: float = 1.4  # هزینه‌ی ساخت/ارتقا هر لول چقدر بیشتر میشه
     BUILD_TIME_GROWTH: float = 1.25  # زمان ساخت هر لول چقدر بیشتر میشه
 
@@ -85,6 +86,7 @@ class Settings:
     EXCHANGE_SELL_PRICE_IRON: int = 8   # هر واحد آهن رو ربات چقدر می‌خره
     EXCHANGE_SELL_PRICE_OIL: int = 10
     EXCHANGE_SELL_PRICE_FOOD: int = 4
+    EXCHANGE_SELL_PRICE_URANIUM: int = 35
     EXCHANGE_BUY_MARKUP_PERCENT: int = 15  # قیمت خرید از ربات نسبت به قیمت فروش چقدر بالاتره
 
     # --- بازار، حراج و آیتم (فاز ۷) ---
