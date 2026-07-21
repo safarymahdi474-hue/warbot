@@ -244,7 +244,8 @@ def build_unit_detail_text(uu: UserUnit, speed_bonus: float, atk_bonus: float, d
         "💰 هزینه هر واحد:",
         f"  {ut.cost_gold} طلا"
         + (f" + {ut.cost_iron} آهن" if ut.cost_iron else "")
-        + (f" + {ut.cost_oil} نفت" if ut.cost_oil else ""),
+        + (f" + {ut.cost_oil} نفت" if ut.cost_oil else "")
+        + (f" + {ut.cost_uranium} اورانیوم" if ut.cost_uranium else ""),
     ]
 
     for q in BUY_QUANTITIES:
@@ -262,6 +263,8 @@ def build_unit_detail_text(uu: UserUnit, speed_bonus: float, atk_bonus: float, d
             parts.append(f"{up_cost['iron']} آهن")
         if up_cost["oil"]:
             parts.append(f"{up_cost['oil']} نفت")
+        if up_cost.get("uranium"):
+            parts.append(f"{up_cost['uranium']} اورانیوم")
         lines.append(
             f"\n⬆️ ارتقا به لول {uu.level + 1}: {' + '.join(parts)} — {up_minutes} دقیقه"
             f" (هر لول {int(100 * 0.10)}٪ به حمله/دفاع اضافه می‌کنه)"
