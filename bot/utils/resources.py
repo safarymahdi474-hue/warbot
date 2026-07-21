@@ -3,9 +3,9 @@ from datetime import datetime, timedelta
 from bot.config import settings
 from bot.database.models import BuildingType, User, UserBuilding
 
-RESOURCE_FIELD = {"food": "food", "iron": "iron", "oil": "oil", "gold": "gold"}
-RESOURCE_MAX_FIELD = {"food": "max_food", "iron": "max_iron", "oil": "max_oil"}  # طلا سقف نداره
-RESOURCE_LABEL = {"food": "🌾 غذا", "iron": "⛏️ آهن", "oil": "🛢️ نفت", "gold": "💰 طلا"}
+RESOURCE_FIELD = {"food": "food", "iron": "iron", "oil": "oil", "gold": "gold", "uranium": "uranium"}
+RESOURCE_MAX_FIELD = {"food": "max_food", "iron": "max_iron", "oil": "max_oil", "uranium": "max_uranium"}  # طلا سقف نداره
+RESOURCE_LABEL = {"food": "🌾 غذا", "iron": "⛏️ آهن", "oil": "🛢️ نفت", "gold": "💰 طلا", "uranium": "☢️ اورانیوم"}
 
 
 def upgrade_cost(building_type: BuildingType, current_level: int) -> dict[str, int]:
@@ -81,6 +81,8 @@ def recalculate_storage_caps(user: User, user_buildings: list[UserBuilding]) -> 
     user.max_food = settings.BASE_RESOURCE_STORAGE + bonus
     user.max_iron = settings.BASE_RESOURCE_STORAGE + bonus
     user.max_oil = settings.BASE_RESOURCE_STORAGE + bonus
+    # اورانیوم ماده‌ی کمیابیه، سقفش خیلی کوچیک‌تر از بقیه‌ی منابعه
+    user.max_uranium = settings.BASE_URANIUM_STORAGE + warehouse_level * 100
 
 
 def collect_production(
@@ -93,7 +95,7 @@ def collect_production(
     """
     now = datetime.utcnow()
     hours_passed = (now - user.last_resource_collect).total_seconds() / 3600
-    gained = {"food": 0, "iron": 0, "oil": 0, "gold": 0}
+    gained = {"food": 0, "iron": 0, "oil": 0, "gold": 0, "uranium": 0}
 
     if hours_passed > 0:
         for ub in user_buildings:
