@@ -11,7 +11,7 @@ from bot.utils.context import user_scope
 from bot.database.models import AuctionListing, ItemType, MarketListing, User
 from bot.utils.items import get_inventory
 from bot.utils.exchange import RESOURCE_LABELS as EXCHANGE_RESOURCE_LABELS
-from bot.utils.exchange import SELL_PRICES, buy_price, buy_resource, sell_resource
+from bot.utils.exchange import buy_price, buy_resource, get_all_sell_prices, sell_resource
 from bot.utils.market import (
     RESOURCE_LABELS,
     buy_market_listing,
@@ -91,13 +91,15 @@ def exchange_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
-def build_exchange_text(user: User) -> str:
+async def build_exchange_text(session, user: User) -> str:
+    sell_prices = await get_all_sell_prices(session)
     lines = ["💱 <b>صرافی منابع</b>\nخرید/فروش آنی با ربات، بدون نیاز به آگهی یا منتظر خریدار موندن.\n"]
     for r, label in EXCHANGE_RESOURCE_LABELS.items():
         owned = getattr(user, r)
+        buy = await buy_price(session, r)
         lines.append(
-            f"{label}: موجودی تو {owned} | فروش به ربات: 💰{SELL_PRICES[r]}/واحد | "
-            f"خرید از ربات: 💰{buy_price(r)}/واحد"
+            f"{label}: موجودی تو {owned} | فروش به ربات: 💰{sell_prices[r]}/واحد | "
+            f"خرید از ربات: 💰{buy}/واحد"
         )
     lines.append(f"\n💰 طلای تو: {user.gold}")
     return "\n".join(lines)
@@ -109,7 +111,8 @@ async def _exchange_view(telegram_id: int):
         user = result.scalar_one_or_none()
         if user is None:
             return "هنوز ثبت‌نام نکردی! دستور /start رو بزن.", None
-        return build_exchange_text(user), exchange_keyboard()
+        text = await build_exchange_text(session, user)
+        return text, exchange_keyboard()
 
 
 @router.callback_query(F.data == "show_exchange")
@@ -155,9 +158,9 @@ async def process_exchange_quantity(message: Message, state: FSMContext) -> None
             return
 
         if action == "sell":
-            success_msg, error_msg = sell_resource(user, resource_type, quantity)
+            success_msg, error_msg = await sell_resource(session, user, resource_type, quantity)
         else:
-            success_msg, error_msg = buy_resource(user, resource_type, quantity)
+            success_msg, error_msg = await buy_resource(session, user, resource_type, quantity)
 
         if error_msg:
             await message.answer(f"❌ {error_msg}")
@@ -254,7 +257,7 @@ async def cb_sell_market_start(callback: CallbackQuery) -> None:
 
     if not items:
         await callback.message.edit_text(
-            "آیتمی برای فروش نداری.\n\n(برای فروش منابع مثل آهن/نفت/غذا از «💱 صرافی منابع» استفاده کن.)",
+            "آیتمی برای فروش نداری.\n\n(برای فروش منابع مثل آهن/نفت/غذا/اورانیوم از «💱 صرافی منابع» استفاده کن.)",
             reply_markup=InlineKeyboardMarkup(inline_keyboard=rows),
         )
     else:
