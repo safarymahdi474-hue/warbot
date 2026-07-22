@@ -149,7 +149,7 @@ def compute_power(
         if uu.quantity <= 0:
             continue
         ut = uu.unit_type
-        per_unit = effective_attack(ut, uu, bonus) if mode == "attack" else effective_defense(ut, uu, bonus)
+        per_unit = effective_attack(ut, bonus) if mode == "attack" else effective_defense(ut, bonus)
         per_unit = int(per_unit * (1 + country_military_bonus_percent / 100))
         total += per_unit * uu.quantity
     return total
@@ -164,16 +164,17 @@ def compute_category_power(
     extra_bonus_percent: float = 0.0,
 ) -> int:
     """
-    دقیقاً مثل compute_power، ولی فقط نیروهایی که unit_type.category شون برابر
-    category هست رو حساب می‌کنه (برای 🛰️ پدافند هوایی - category='plane').
+    دقیقاً مثل compute_power، ولی فقط نیروهایی که category_group شون برابر
+    category هست رو حساب می‌کنه (مثلاً category='air').
+    توجه: این تابع موقتیه و تو فاز ۳ (بازطراحی پدافند هوایی) کامل عوض میشه.
     """
     bonus = get_bonus_percent(researches, f"{mode}_percent") + extra_bonus_percent
     total = 0
     for uu in units:
-        if uu.quantity <= 0 or uu.unit_type.category != category:
+        if uu.quantity <= 0 or uu.unit_type.category_group != category:
             continue
         ut = uu.unit_type
-        per_unit = effective_attack(ut, uu, bonus) if mode == "attack" else effective_defense(ut, uu, bonus)
+        per_unit = effective_attack(ut, bonus) if mode == "attack" else effective_defense(ut, bonus)
         per_unit = int(per_unit * (1 + country_military_bonus_percent / 100))
         total += per_unit * uu.quantity
     return total
@@ -299,7 +300,7 @@ async def resolve_pvp_battle(
         attacker_units, attacker_research, attacker_country_bonus, "attack", attacker_attack_boost
     )
     attacker_air_power_raw = compute_category_power(
-        attacker_units, attacker_research, attacker_country_bonus, "attack", "plane", attacker_attack_boost
+        attacker_units, attacker_research, attacker_country_bonus, "attack", "air", attacker_attack_boost
     )
     attacker_air_ratio = (attacker_air_power_raw / attacker_power_raw) if attacker_power_raw > 0 else 0.0
 
