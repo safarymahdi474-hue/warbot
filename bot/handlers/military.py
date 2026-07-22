@@ -19,17 +19,13 @@ from bot.utils.military import (
     effective_defense,
     finish_ready_research,
     finish_ready_training,
-    finish_ready_unit_upgrades,
     get_bonus_percent,
     research_cost,
     research_duration,
     start_research,
     start_training,
-    start_unit_upgrade,
     training_cost,
     training_duration,
-    unit_upgrade_cost,
-    unit_upgrade_duration,
 )
 from bot.utils.missions import record_progress
 from bot.utils.room_settings import deliver_sensitive_content
@@ -40,24 +36,35 @@ router = Router(name="military")
 
 BUY_QUANTITIES = [1, 10, 50]
 
+# ترتیب نمایش دسته‌های اصلی و زیردسته‌ها تو منوی ارتش
+CATEGORY_GROUP_LABELS = {"ground": "🪖 نیروی زمینی", "air": "✈️ نیروی هوایی", "navy": "🚢 نیروی دریایی"}
+SUBCATEGORY_LABELS = {
+    "infantry": "🪖 پیاده‌نظام",
+    "tank": "🛡️ تانک",
+    "artillery": "💥 توپخانه",
+    "missile": "🚀 موشک",
+    "air_defense": "🛰️ پدافند هوایی",
+    "fighter": "🛩️ جنگنده",
+    "drone": "🛸 پهپاد",
+    "bomber": "💣 بمب‌افکن",
+    "navy": "🚢 دریایی",
+}
+SUBCATEGORY_ORDER = list(SUBCATEGORY_LABELS.keys())
+
 
 # ---------------------------------------------------------------------------
 # بارگذاری و همگام‌سازی
 # ---------------------------------------------------------------------------
 
 async def _backfill_missing_rows(session, user: User) -> None:
-    """
-    اگه بعد از ثبت‌نام کاربر، نوع نیرو یا تحقیق جدیدی به کاتالوگ اضافه شده باشه
-    (مثلاً بمب‌افکن یا یه تحقیق جدید)، این تابع ردیف‌های ازقلم‌افتاده رو
-    می‌سازه. بدون این، کاربرهای قدیمی هیچ‌وقت آیتم‌های جدید رو نمی‌بینن.
-    """
+    """اگه بعد از ثبت‌نام کاربر، نوع نیرو یا تحقیق جدیدی به کاتالوگ اضافه شده باشه، می‌سازتش."""
     result = await session.execute(select(UnitType))
     all_unit_types = list(result.scalars().all())
     result = await session.execute(select(UserUnit).where(UserUnit.user_id == user.id))
     existing_unit_type_ids = {uu.unit_type_id for uu in result.scalars().all()}
     for ut in all_unit_types:
         if ut.id not in existing_unit_type_ids:
-            session.add(UserUnit(user_id=user.id, unit_type_id=ut.id, quantity=0, level=1))
+            session.add(UserUnit(user_id=user.id, unit_type_id=ut.id, quantity=0))
 
     result = await session.execute(select(ResearchType))
     all_research_types = list(result.scalars().all())
@@ -83,9 +90,7 @@ async def _load_state(session, telegram_id: int):
     )
     user_units = list(result.scalars().all())
 
-    result = await session.execute(
-        select(TrainingOrder).where(TrainingOrder.user_id == user.id)
-    )
+    result = await session.execute(select(TrainingOrder).where(TrainingOrder.user_id == user.id))
     orders = list(result.scalars().all())
 
     result = await session.execute(
@@ -95,17 +100,12 @@ async def _load_state(session, telegram_id: int):
     )
     user_researches = list(result.scalars().all())
 
-    # اتمام آموزش‌های تموم‌شده
     units_by_type = {uu.unit_type_id: uu for uu in user_units}
     finished_orders = finish_ready_training(orders, units_by_type)
     for order in finished_orders:
         await session.delete(order)
         orders.remove(order)
 
-    # اتمام ارتقای نیروهای تموم‌شده
-    finish_ready_unit_upgrades(user_units)
-
-    # اتمام تحقیقات تموم‌شده
     finish_ready_research(user_researches)
 
     await session.commit()
@@ -125,43 +125,68 @@ def _defense_bonus(user_researches: list[UserResearch]) -> float:
 
 
 # ---------------------------------------------------------------------------
-# نمایش لیست ارتش
+# نمایش لیست ارتش (دسته‌بندی‌شده، با قفل نیروهای سطح‌نرسیده)
 # ---------------------------------------------------------------------------
 
-def build_army_text(user_units: list[UserUnit], orders: list[TrainingOrder], atk_bonus: float, def_bonus: float) -> str:
+def build_army_text(
+    user: User, user_units: list[UserUnit], orders: list[TrainingOrder], atk_bonus: float, def_bonus: float
+) -> str:
     lines = ["⚔️ <b>ارتش تو</b>\n"]
     pending_by_type: dict[int, int] = {}
     for o in orders:
         pending_by_type[o.unit_type_id] = pending_by_type.get(o.unit_type_id, 0) + o.quantity
 
+    units_by_subcategory: dict[str, list[UserUnit]] = {}
+    for uu in user_units:
+        units_by_subcategory.setdefault(uu.unit_type.subcategory, []).append(uu)
+
     total_attack = total_defense = 0
-    for uu in sorted(user_units, key=lambda x: x.unit_type.id):
-        ut = uu.unit_type
-        atk = effective_attack(ut, uu, atk_bonus)
-        dfn = effective_defense(ut, uu, def_bonus)
-        total_attack += atk * uu.quantity
-        total_defense += dfn * uu.quantity
+    for subcat in SUBCATEGORY_ORDER:
+        rows = units_by_subcategory.get(subcat)
+        if not rows:
+            continue
+        rows.sort(key=lambda uu: uu.unit_type.tier)
+        lines.append(f"\n<b>{SUBCATEGORY_LABELS[subcat]}</b>")
+        for uu in rows:
+            ut = uu.unit_type
+            atk = effective_attack(ut, atk_bonus)
+            dfn = effective_defense(ut, def_bonus)
+            total_attack += atk * uu.quantity
+            total_defense += dfn * uu.quantity
 
-        pending = pending_by_type.get(ut.id, 0)
-        pending_txt = f" (⏳ +{pending} در حال آموزش)" if pending else ""
-        upgrading_txt = " (⏳ در حال ارتقا)" if uu.upgrade_finish_at else ""
+            if user.level < ut.min_player_level:
+                lines.append(f"  🔒 {ut.icon} {ut.name_fa} — نیاز به سطح {ut.min_player_level}")
+                continue
 
-        lines.append(
-            f"{ut.icon} <b>{ut.name_fa}</b>: {uu.quantity} عدد | لول {uu.level}{upgrading_txt}\n"
-            f"   ⚔️حمله:{atk} 🛡️دفاع:{dfn}{pending_txt}"
-        )
+            pending = pending_by_type.get(ut.id, 0)
+            pending_txt = f" (⏳ +{pending})" if pending else ""
+            lines.append(f"  {ut.icon} <b>{ut.name_fa}</b>: {uu.quantity} عدد{pending_txt}")
 
     lines.append(f"\n📊 مجموع قدرت — ⚔️ حمله: {total_attack} | 🛡️ دفاع: {total_defense}")
     return "\n".join(lines)
 
 
-def army_keyboard(user_units: list[UserUnit]) -> InlineKeyboardMarkup:
+def army_keyboard(user: User, user_units: list[UserUnit]) -> InlineKeyboardMarkup:
     rows = []
-    for uu in sorted(user_units, key=lambda x: x.unit_type.id):
-        ut = uu.unit_type
-        rows.append(
-            [InlineKeyboardButton(text=f"{ut.icon} {ut.name_fa}", callback_data=f"unit_menu:{ut.id}")]
-        )
+    units_by_subcategory: dict[str, list[UserUnit]] = {}
+    for uu in user_units:
+        units_by_subcategory.setdefault(uu.unit_type.subcategory, []).append(uu)
+
+    for subcat in SUBCATEGORY_ORDER:
+        unlocked = [uu for uu in units_by_subcategory.get(subcat, []) if user.level >= uu.unit_type.min_player_level]
+        if not unlocked:
+            continue
+        unlocked.sort(key=lambda uu: uu.unit_type.tier)
+        row = []
+        for uu in unlocked:
+            ut = uu.unit_type
+            row.append(InlineKeyboardButton(text=f"{ut.icon} {ut.name_fa}", callback_data=f"unit_menu:{ut.id}"))
+            if len(row) == 2:
+                rows.append(row)
+                row = []
+        if row:
+            rows.append(row)
+
     rows.append([InlineKeyboardButton(text="🔬 تحقیق و توسعه", callback_data="show_research")])
     rows.append([InlineKeyboardButton(text="🔄 بروزرسانی", callback_data="show_army")])
     rows.append([InlineKeyboardButton(text="🔙 منوی اصلی", callback_data="show_main_menu")])
@@ -175,8 +200,8 @@ async def _army_view(telegram_id: int):
             return NOT_REGISTERED_MSG, None
         atk_bonus = _attack_bonus(user_researches)
         def_bonus = _defense_bonus(user_researches)
-        text = build_army_text(user_units, orders, atk_bonus, def_bonus)
-        return text, army_keyboard(user_units)
+        text = build_army_text(user, user_units, orders, atk_bonus, def_bonus)
+        return text, army_keyboard(user, user_units)
 
 
 @router.message(Command("army"))
@@ -217,7 +242,7 @@ async def cb_army(callback: CallbackQuery) -> None:
 
 
 # ---------------------------------------------------------------------------
-# جزئیات + خرید + ارتقای یک نوع نیرو
+# جزئیات + خرید یک نوع نیرو (بدون ارتقای سطحی - هر نیرو خودش یه ردیف ثابته)
 # ---------------------------------------------------------------------------
 
 def unit_detail_keyboard(unit_type_id: int) -> InlineKeyboardMarkup:
@@ -226,7 +251,6 @@ def unit_detail_keyboard(unit_type_id: int) -> InlineKeyboardMarkup:
             InlineKeyboardButton(text=f"🛒 خرید {q}", callback_data=f"buy_unit:{unit_type_id}:{q}")
             for q in BUY_QUANTITIES
         ],
-        [InlineKeyboardButton(text="⬆️ ارتقای این نیرو", callback_data=f"upgrade_unit:{unit_type_id}")],
         [InlineKeyboardButton(text="🔙 بازگشت", callback_data="show_army")],
     ]
     return InlineKeyboardMarkup(inline_keyboard=rows)
@@ -234,12 +258,12 @@ def unit_detail_keyboard(unit_type_id: int) -> InlineKeyboardMarkup:
 
 def build_unit_detail_text(uu: UserUnit, speed_bonus: float, atk_bonus: float, def_bonus: float) -> str:
     ut = uu.unit_type
-    atk = effective_attack(ut, uu, atk_bonus)
-    dfn = effective_defense(ut, uu, def_bonus)
+    atk = effective_attack(ut, atk_bonus)
+    dfn = effective_defense(ut, def_bonus)
 
     lines = [
         f"{ut.icon} <b>{ut.name_fa}</b>",
-        f"تعداد فعلی: {uu.quantity} | لول: {uu.level}/{ut.max_level}",
+        f"تعداد فعلی: {uu.quantity}",
         f"⚔️ حمله (هر واحد): {atk}  🛡️ دفاع (هر واحد): {dfn}\n",
         "💰 هزینه هر واحد:",
         f"  {ut.cost_gold} طلا"
@@ -253,27 +277,6 @@ def build_unit_detail_text(uu: UserUnit, speed_bonus: float, atk_bonus: float, d
         duration = training_duration(ut, q, speed_bonus)
         minutes = max(1, int(duration.total_seconds() // 60))
         lines.append(f"  خرید {q} عدد → {minutes} دقیقه زمان آموزش")
-
-    if uu.level < ut.max_level:
-        up_cost = unit_upgrade_cost(ut, uu.level)
-        up_duration = unit_upgrade_duration(uu.level)
-        up_minutes = max(1, int(up_duration.total_seconds() // 60))
-        parts = [f"{up_cost['gold']} طلا"]
-        if up_cost["iron"]:
-            parts.append(f"{up_cost['iron']} آهن")
-        if up_cost["oil"]:
-            parts.append(f"{up_cost['oil']} نفت")
-        if up_cost.get("uranium"):
-            parts.append(f"{up_cost['uranium']} اورانیوم")
-        lines.append(
-            f"\n⬆️ ارتقا به لول {uu.level + 1}: {' + '.join(parts)} — {up_minutes} دقیقه"
-            f" (هر لول {int(100 * 0.10)}٪ به حمله/دفاع اضافه می‌کنه)"
-        )
-    else:
-        lines.append("\n⬆️ این نیرو به حداکثر سطح رسیده.")
-
-    if uu.upgrade_finish_at is not None:
-        lines.append("\n⏳ همین الان در حال ارتقاست.")
 
     return "\n".join(lines)
 
@@ -290,19 +293,18 @@ async def cb_unit_menu(callback: CallbackQuery) -> None:
         if uu is None:
             await callback.answer("این نیرو پیدا نشد.", show_alert=True)
             return
+        if user.level < uu.unit_type.min_player_level:
+            await callback.answer(f"این نیرو نیاز به سطح {uu.unit_type.min_player_level} داره.", show_alert=True)
+            return
 
         text = build_unit_detail_text(
             uu, _training_speed_bonus(user_researches), _attack_bonus(user_researches), _defense_bonus(user_researches)
         )
 
     try:
-        await callback.message.edit_text(
-            text, reply_markup=unit_detail_keyboard(unit_type_id), parse_mode="HTML"
-        )
+        await callback.message.edit_text(text, reply_markup=unit_detail_keyboard(unit_type_id), parse_mode="HTML")
     except Exception:
-        await callback.message.answer(
-            text, reply_markup=unit_detail_keyboard(unit_type_id), parse_mode="HTML"
-        )
+        await callback.message.answer(text, reply_markup=unit_detail_keyboard(unit_type_id), parse_mode="HTML")
     await callback.answer()
 
 
@@ -341,45 +343,6 @@ async def cb_buy_unit(callback: CallbackQuery) -> None:
         await callback.message.edit_text(text, reply_markup=keyboard, parse_mode="HTML")
     except Exception:
         await callback.message.answer(text, reply_markup=keyboard, parse_mode="HTML")
-
-
-@router.callback_query(F.data.startswith("upgrade_unit:"))
-async def cb_upgrade_unit(callback: CallbackQuery) -> None:
-    unit_type_id = int(callback.data.split(":")[1])
-
-    async with get_session() as session:
-        user, user_units, orders, user_researches = await _load_state(session, callback.from_user.id)
-        if user is None:
-            await callback.answer("هنوز ثبت‌نام نکردی!", show_alert=True)
-            return
-
-        uu = next((u for u in user_units if u.unit_type_id == unit_type_id), None)
-        if uu is None:
-            await callback.answer("این نیرو پیدا نشد.", show_alert=True)
-            return
-
-        error = start_unit_upgrade(user, uu, uu.unit_type)
-        if error:
-            await callback.answer(error, show_alert=True)
-            return
-
-        await session.commit()
-        await callback.answer("✅ ارتقا شروع شد!", show_alert=True)
-
-    async with get_session() as session:
-        user, user_units, orders, user_researches = await _load_state(session, callback.from_user.id)
-        uu = next((u for u in user_units if u.unit_type_id == unit_type_id), None)
-        text = build_unit_detail_text(
-            uu, _training_speed_bonus(user_researches), _attack_bonus(user_researches), _defense_bonus(user_researches)
-        )
-    try:
-        await callback.message.edit_text(
-            text, reply_markup=unit_detail_keyboard(unit_type_id), parse_mode="HTML"
-        )
-    except Exception:
-        await callback.message.answer(
-            text, reply_markup=unit_detail_keyboard(unit_type_id), parse_mode="HTML"
-        )
 
 
 # ---------------------------------------------------------------------------
@@ -429,7 +392,7 @@ async def _research_view(telegram_id: int):
     async with get_session() as session:
         user, user_units, orders, user_researches = await _load_state(session, telegram_id)
         if user is None:
-            return "هنوز ثبت‌نام نکردی! دستور /start رو بزن.", None
+            return NOT_REGISTERED_MSG, None
         return build_research_text(user_researches), research_keyboard(user_researches)
 
 
