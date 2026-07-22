@@ -100,62 +100,12 @@ def finish_ready_training(orders: list[TrainingOrder], user_units: dict[int, Use
 # ارتقای نیروها (سطح‌بندی که روی کل تعداد نیروی همون نوع اثر می‌ذاره)
 # ---------------------------------------------------------------------------
 
-def unit_upgrade_cost(unit_type: UnitType, current_level: int) -> dict[str, int]:
-    growth = settings.UNIT_UPGRADE_COST_GROWTH**current_level
-    return {
-        "gold": int(unit_type.cost_gold * 2 * growth),
-        "iron": int(unit_type.cost_iron * 2 * growth),
-        "oil": int(unit_type.cost_oil * 2 * growth),
-        "uranium": int(unit_type.cost_uranium * 2 * growth),
-    }
+def effective_attack(unit_type: UnitType, attack_bonus_percent: float) -> int:
+    return int(unit_type.base_attack * (1 + attack_bonus_percent / 100))
 
 
-def unit_upgrade_duration(current_level: int) -> timedelta:
-    seconds = settings.UNIT_BASE_UPGRADE_SECONDS * (settings.UNIT_UPGRADE_TIME_GROWTH**current_level)
-    return timedelta(seconds=int(seconds))
-
-
-def start_unit_upgrade(user: User, user_unit: UserUnit, unit_type: UnitType) -> str | None:
-    if user_unit.upgrade_finish_at is not None:
-        return "این نیرو همین الان در حال ارتقاست."
-    if user_unit.level >= unit_type.max_level:
-        return "این نیرو به حداکثر سطح رسیده."
-    if user_unit.quantity <= 0:
-        return "اول باید حداقل یک واحد از این نیرو داشته باشی."
-
-    cost = unit_upgrade_cost(unit_type, user_unit.level)
-    if not can_afford(user, cost):
-        return "منابع کافی نداری. هزینه لازم: " + " + ".join(_format_cost_parts(cost))
-
-    user.gold -= cost["gold"]
-    user.iron -= cost["iron"]
-    user.oil -= cost["oil"]
-    user.uranium -= cost["uranium"]
-    user_unit.upgrade_finish_at = datetime.utcnow() + unit_upgrade_duration(user_unit.level)
-    return None
-
-
-def finish_ready_unit_upgrades(user_units: list[UserUnit]) -> list[UserUnit]:
-    now = datetime.utcnow()
-    finished = []
-    for uu in user_units:
-        if uu.upgrade_finish_at is not None and uu.upgrade_finish_at <= now:
-            uu.level += 1
-            uu.upgrade_finish_at = None
-            finished.append(uu)
-    return finished
-
-
-def effective_attack(unit_type: UnitType, user_unit: UserUnit, attack_bonus_percent: float) -> int:
-    level_multiplier = 1 + (user_unit.level - 1) * settings.UNIT_UPGRADE_STAT_BONUS_PER_LEVEL
-    research_multiplier = 1 + (attack_bonus_percent / 100)
-    return int(unit_type.base_attack * level_multiplier * research_multiplier)
-
-
-def effective_defense(unit_type: UnitType, user_unit: UserUnit, defense_bonus_percent: float) -> int:
-    level_multiplier = 1 + (user_unit.level - 1) * settings.UNIT_UPGRADE_STAT_BONUS_PER_LEVEL
-    research_multiplier = 1 + (defense_bonus_percent / 100)
-    return int(unit_type.base_defense * level_multiplier * research_multiplier)
+def effective_defense(unit_type: UnitType, defense_bonus_percent: float) -> int:
+    return int(unit_type.base_defense * (1 + defense_bonus_percent / 100))
 
 
 # ---------------------------------------------------------------------------
