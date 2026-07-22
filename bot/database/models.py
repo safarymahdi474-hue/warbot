@@ -197,13 +197,22 @@ class UserBuilding(Base):
 
 class UnitType(Base):
     """
-    نوع نیروی نظامی (سرباز، تانک، هواپیما، کشتی). ثابت‌ان و در db.py سید می‌شن.
+    نوع نیروی نظامی. برخلاف قبل، دیگه «ارتقای سطح» روی یه نیروی ثابت وجود
+    نداره؛ به‌جاش هر واحد یه ردیف (tier) مشخص تو یه زیردسته‌ست و با رسیدن
+    به سطح لازم (min_player_level)، همون واحدِ بعدی و قوی‌تر باز میشه.
+
+    category_group: 'ground' | 'air' | 'navy'
+    subcategory: 'infantry' | 'tank' | 'artillery' | 'missile' | 'air_defense' |
+                 'fighter' | 'drone' | 'bomber' | 'navy'
+    tier: موقعیت این واحد داخل همون زیردسته (۱ = ضعیف‌ترین)
     """
     __tablename__ = "unit_types"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    key: Mapped[str] = mapped_column(String(32), unique=True)  # 'soldier', 'tank', 'plane', 'ship'
-    category: Mapped[str] = mapped_column(String(16))  # 'soldier' | 'tank' | 'plane' | 'ship'
+    key: Mapped[str] = mapped_column(String(32), unique=True)
+    category_group: Mapped[str] = mapped_column(String(16))
+    subcategory: Mapped[str] = mapped_column(String(32))
+    tier: Mapped[int] = mapped_column(Integer, default=1)
     name_fa: Mapped[str] = mapped_column(String(64))
     icon: Mapped[str] = mapped_column(String(8), default="⚔️")
 
@@ -217,16 +226,12 @@ class UnitType(Base):
     train_seconds_per_unit: Mapped[int] = mapped_column(Integer, default=10)
 
     min_player_level: Mapped[int] = mapped_column(Integer, default=1)
-    max_level: Mapped[int] = mapped_column(Integer, default=10)  # سقف ارتقای نیرو (فاز ارتقای نیروها)
 
     user_units: Mapped[list["UserUnit"]] = relationship(back_populates="unit_type")
 
 
 class UserUnit(Base):
-    """
-    تعداد نیروی هر نوع که کاربر مالکشه + سطح ارتقای اون نوع نیرو
-    (ارتقا روی کل نیروهای همون نوع اثر می‌ذاره، نه یک واحد به‌تنهایی).
-    """
+    """تعداد نیروی هر نوع که کاربر مالکشه. دیگه سطح/ارتقای جدا نداره؛ فقط تعداد."""
     __tablename__ = "user_units"
     __table_args__ = (UniqueConstraint("user_id", "unit_type_id", name="uq_user_unit_type"),)
 
@@ -235,8 +240,6 @@ class UserUnit(Base):
     unit_type_id: Mapped[int] = mapped_column(ForeignKey("unit_types.id"))
 
     quantity: Mapped[int] = mapped_column(Integer, default=0)
-    level: Mapped[int] = mapped_column(Integer, default=1)  # لول ۱ = بدون ارتقا
-    upgrade_finish_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
     user: Mapped["User"] = relationship(back_populates="units")
     unit_type: Mapped["UnitType"] = relationship(back_populates="user_units")
@@ -761,6 +764,22 @@ class GiftCodeRedemption(Base):
     gift_code_id: Mapped[int] = mapped_column(ForeignKey("gift_codes.id"))
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
     redeemed_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class BattleDialogue(Base):
+    """
+    دیالوگ‌های تزئینی (فلیورتکست) که به گزارش نبرد/جاسوسی اضافه میشن. از قبل
+    (مثلاً با هوش مصنوعی خارج از ربات) نوشته و توسط ادمین اضافه می‌شن؛ موقع
+    نمایش، یکی به‌صورت تصادفی از بانک انتخاب میشه - نیازی به فراخوانی زنده‌ی
+    هیچ APIـی نیست، و طبیعتاً با تصادفی بودن، تکرار هم میشن.
+    """
+    __tablename__ = "battle_dialogues"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    category: Mapped[str] = mapped_column(String(32), index=True)
+    text: Mapped[str] = mapped_column(String(500))
+    active: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
 
 class BannedTelegramUser(Base):
