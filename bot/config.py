@@ -26,11 +26,6 @@ class Settings:
     BUILD_TIME_GROWTH: float = 1.25  # زمان ساخت هر لول چقدر بیشتر میشه
 
     # --- ارتش و تحقیقات (فاز ۳) ---
-    UNIT_UPGRADE_STAT_BONUS_PER_LEVEL: float = 0.10  # هر لول ارتقای نیرو، ۱۰٪ به حمله/دفاع اضافه می‌کنه
-    UNIT_UPGRADE_COST_GROWTH: float = 1.5
-    UNIT_UPGRADE_TIME_GROWTH: float = 1.3
-    UNIT_BASE_UPGRADE_SECONDS: int = 180
-
     RESEARCH_COST_GROWTH: float = 1.5
     RESEARCH_TIME_GROWTH: float = 1.3
 
