@@ -158,7 +158,7 @@ async def resolve_group_attack(session: AsyncSession, attack: AllianceGroupAttac
         country_bonus = user.country.military_bonus_percent if user.country else 0.0
         boost = await get_active_boost_percent(session, user.id, "attack_percent") + academy_bonus
         power = compute_power(units, research, country_bonus, "attack", boost)
-        air_power = compute_category_power(units, research, country_bonus, "attack", "plane", boost)
+        air_power = compute_category_power(units, research, country_bonus, "attack", "air", boost)
         total_attack_power += power
         total_air_power += air_power
         participant_data.append({"user": user, "units": units, "research": research, "power": power})
