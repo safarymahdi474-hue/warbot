@@ -1077,3 +1077,4 @@ async def init_db() -> None:
 
 def get_session() -> AsyncSession:
     return async_session()
+    
