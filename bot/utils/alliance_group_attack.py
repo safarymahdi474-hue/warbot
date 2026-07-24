@@ -15,7 +15,14 @@ from bot.database.models import (
 )
 from bot.utils.alliance import add_war_score, get_active_war_between
 from bot.utils.alliance_research import get_alliance_bonus_percent
-from bot.utils.battle import compute_category_power, compute_power, destroy_units, load_combat_units_and_research
+from bot.utils.battle import (
+    air_defense_reduction_percent,
+    compute_air_defense_power,
+    compute_air_offense_power,
+    compute_power,
+    destroy_units,
+    load_combat_units_and_research,
+)
 from bot.utils.context import current_room, room_condition
 from bot.utils.global_events import get_xp_multiplier
 from bot.utils.items import get_active_boost_percent
@@ -158,7 +165,7 @@ async def resolve_group_attack(session: AsyncSession, attack: AllianceGroupAttac
         country_bonus = user.country.military_bonus_percent if user.country else 0.0
         boost = await get_active_boost_percent(session, user.id, "attack_percent") + academy_bonus
         power = compute_power(units, research, country_bonus, "attack", boost)
-        air_power = compute_category_power(units, research, country_bonus, "attack", "air", boost)
+        air_power = compute_air_offense_power(units, research, country_bonus, boost)
         total_attack_power += power
         total_air_power += air_power
         participant_data.append({"user": user, "units": units, "research": research, "power": power})
@@ -170,12 +177,14 @@ async def resolve_group_attack(session: AsyncSession, attack: AllianceGroupAttac
         target_units, target_research, target_country_bonus, "defense", target_boost
     )
 
-    # 🛰️ پدافند هوایی هدف: فقط سهم قدرت تیم که از هواپیما میاد رو کم می‌کنه
+    # 🛰️ پدافند هوایی هدف: قدرت واقعی واحدهای پدافندی‌اش، سهم هوایی حمله‌ی
+    # تیم رو خنثی می‌کنه - نه یه بونوس تحقیقی ثابت.
     air_ratio = (total_air_power / total_attack_power) if total_attack_power > 0 else 0.0
-    air_defense_bonus = get_bonus_percent(target_research, "air_defense_percent")
-    if air_ratio > 0 and air_defense_bonus > 0:
+    target_air_defense_power = compute_air_defense_power(target_units, target_research, target_country_bonus, target_boost)
+    air_reduction = air_defense_reduction_percent(target_air_defense_power)
+    if air_ratio > 0 and air_reduction > 0:
         air_power_effective = total_attack_power * air_ratio
-        total_attack_power = int(total_attack_power - air_power_effective * (air_defense_bonus / 100))
+        total_attack_power = int(total_attack_power - air_power_effective * (air_reduction / 100))
 
     roll_attackers = total_attack_power * random.uniform(0.9, 1.1)
     roll_target = target_power * random.uniform(0.9, 1.1)
