@@ -29,6 +29,10 @@ class Settings:
     RESEARCH_COST_GROWTH: float = 1.5
     RESEARCH_TIME_GROWTH: float = 1.3
 
+    # --- پدافند هوایی (بر پایه‌ی نیرو، نه تحقیق) ---
+    AIR_DEFENSE_POWER_PER_PERCENT: float = 50.0  # هر ۵۰ واحد قدرت پدافندی = ۱٪ کاهش قدرت هوایی حریف
+    AIR_DEFENSE_MAX_REDUCTION_PERCENT: float = 80.0  # سقف کاهش
+
     # --- نبرد (فاز ۴) ---
     ATTACK_ENERGY_COST: int = 15
     MIN_HP_PERCENT_TO_ATTACK: int = 20  # اگه HP کمتر از این درصد باشه، نمی‌تونی حمله کنی
