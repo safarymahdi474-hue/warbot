@@ -155,29 +155,56 @@ def compute_power(
     return total
 
 
-def compute_category_power(
+# زیردسته‌هایی که «حمله‌ی هوایی» حساب میشن (چیزی که پدافند هوایی می‌خواد جلوش رو بگیره)
+AIR_OFFENSE_SUBCATEGORIES = {"fighter", "drone", "bomber", "missile"}
+
+
+def compute_air_offense_power(
     units: list[UserUnit],
     researches: list[UserResearch],
     country_military_bonus_percent: float,
-    mode: str,
-    category: str,
     extra_bonus_percent: float = 0.0,
 ) -> int:
-    """
-    دقیقاً مثل compute_power، ولی فقط نیروهایی که category_group شون برابر
-    category هست رو حساب می‌کنه (مثلاً category='air').
-    توجه: این تابع موقتیه و تو فاز ۳ (بازطراحی پدافند هوایی) کامل عوض میشه.
-    """
-    bonus = get_bonus_percent(researches, f"{mode}_percent") + extra_bonus_percent
+    """جمع قدرت حمله‌ی همه‌ی نیروهای هوایی تهاجمی (جنگنده/پهپاد/بمب‌افکن/موشک) - نه پدافند هوایی خودش."""
+    bonus = get_bonus_percent(researches, "attack_percent") + extra_bonus_percent
     total = 0
     for uu in units:
-        if uu.quantity <= 0 or uu.unit_type.category_group != category:
+        if uu.quantity <= 0 or uu.unit_type.subcategory not in AIR_OFFENSE_SUBCATEGORIES:
             continue
-        ut = uu.unit_type
-        per_unit = effective_attack(ut, bonus) if mode == "attack" else effective_defense(ut, bonus)
+        per_unit = effective_attack(uu.unit_type, bonus)
         per_unit = int(per_unit * (1 + country_military_bonus_percent / 100))
         total += per_unit * uu.quantity
     return total
+
+
+def compute_air_defense_power(
+    units: list[UserUnit],
+    researches: list[UserResearch],
+    country_military_bonus_percent: float,
+    extra_bonus_percent: float = 0.0,
+) -> int:
+    """جمع قدرت دفاعی واحدهای پدافند هوایی (🛰️) - این عدد تعیین می‌کنه چقدر از حمله‌ی هوایی حریف خنثی میشه."""
+    bonus = get_bonus_percent(researches, "defense_percent") + extra_bonus_percent
+    total = 0
+    for uu in units:
+        if uu.quantity <= 0 or uu.unit_type.subcategory != "air_defense":
+            continue
+        per_unit = effective_defense(uu.unit_type, bonus)
+        per_unit = int(per_unit * (1 + country_military_bonus_percent / 100))
+        total += per_unit * uu.quantity
+    return total
+
+
+def air_defense_reduction_percent(air_defense_power: int) -> float:
+    """
+    قدرت پدافندی رو به درصد کاهش قدرت هوایی حریف تبدیل می‌کنه.
+    هر settings.AIR_DEFENSE_POWER_PER_PERCENT واحد قدرت پدافندی = ۱٪ کاهش،
+    با سقف settings.AIR_DEFENSE_MAX_REDUCTION_PERCENT.
+    """
+    if air_defense_power <= 0:
+        return 0.0
+    percent = air_defense_power / settings.AIR_DEFENSE_POWER_PER_PERCENT
+    return min(percent, settings.AIR_DEFENSE_MAX_REDUCTION_PERCENT)
 
 
 def destroy_units(units: list[UserUnit], loss_percent: float) -> int:
@@ -299,10 +326,10 @@ async def resolve_pvp_battle(
     attacker_power_raw = compute_power(
         attacker_units, attacker_research, attacker_country_bonus, "attack", attacker_attack_boost
     )
-    attacker_air_power_raw = compute_category_power(
-        attacker_units, attacker_research, attacker_country_bonus, "attack", "air", attacker_attack_boost
+    attacker_air_offense_raw = compute_air_offense_power(
+        attacker_units, attacker_research, attacker_country_bonus, attacker_attack_boost
     )
-    attacker_air_ratio = (attacker_air_power_raw / attacker_power_raw) if attacker_power_raw > 0 else 0.0
+    attacker_air_ratio = (attacker_air_offense_raw / attacker_power_raw) if attacker_power_raw > 0 else 0.0
 
     attacker_power = int(attacker_power_raw * strategy["power_mult"])
     defender_power = compute_power(
@@ -317,11 +344,15 @@ async def resolve_pvp_battle(
     if event["side"] in ("defender", "both"):
         defender_power = int(defender_power * event["power_mult"])
 
-    # 🛰️ پدافند هوایی: فقط سهم قدرت مهاجم که از هواپیما میاد رو کم می‌کنه
-    air_defense_bonus = get_bonus_percent(defender_research, "air_defense_percent")
-    if attacker_air_ratio > 0 and air_defense_bonus > 0:
+    # 🛰️ پدافند هوایی: قدرت واقعی واحدهای پدافندی مدافع، سهم هوایی حمله‌ی
+    # مهاجم (جنگنده/پهپاد/بمب‌افکن/موشک) رو خنثی می‌کنه - نه یه بونوس تحقیقی ثابت.
+    defender_air_defense_power = compute_air_defense_power(
+        defender_units, defender_research, defender_country_bonus, defender_defense_boost
+    )
+    air_reduction = air_defense_reduction_percent(defender_air_defense_power)
+    if attacker_air_ratio > 0 and air_reduction > 0:
         attacker_air_power_effective = attacker_power * attacker_air_ratio
-        attacker_power = int(attacker_power - attacker_air_power_effective * (air_defense_bonus / 100))
+        attacker_power = int(attacker_power - attacker_air_power_effective * (air_reduction / 100))
 
     attacker.energy -= settings.ATTACK_ENERGY_COST
 
