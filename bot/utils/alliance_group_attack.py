@@ -3,7 +3,6 @@ from datetime import datetime
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
 
 from bot.config import settings
 from bot.database.models import (
@@ -124,7 +123,7 @@ async def get_participants(session: AsyncSession, attack: AllianceGroupAttack) -
     rows = list(result.scalars().all())
     users = []
     for row in rows:
-        u = await session.get(User, row.user_id, options=[selectinload(User.country)])
+        u = await session.get(User, row.user_id)
         if u is not None:
             users.append(u)
     return users
@@ -142,7 +141,7 @@ async def resolve_group_attack(session: AsyncSession, attack: AllianceGroupAttac
     if len(participants) < settings.ALLIANCE_GROUP_ATTACK_MIN_PARTICIPANTS:
         return f"حداقل {settings.ALLIANCE_GROUP_ATTACK_MIN_PARTICIPANTS} نفر باید بپیوندن تا حمله شروع بشه."
 
-    target = await session.get(User, attack.target_user_id, options=[selectinload(User.country)])
+    target = await session.get(User, attack.target_user_id)
     if target is None:
         return "هدف این حمله دیگه در دسترس نیست."
 
@@ -157,12 +156,13 @@ async def resolve_group_attack(session: AsyncSession, attack: AllianceGroupAttac
             )
 
     # --- محاسبه‌ی قدرت هر شرکت‌کننده و جمع کل ---
+    # بونوس نظامی حالا وابسته به کشور نیست؛ یه مقدار ثابت و یکسان برای همه‌ست
     participant_data = []
     total_attack_power = 0
     total_air_power = 0
     for user in participants:
         units, research = await load_combat_units_and_research(session, user.id)
-        country_bonus = user.country.military_bonus_percent if user.country else 0.0
+        country_bonus = settings.NATION_MILITARY_BONUS_PERCENT
         boost = await get_active_boost_percent(session, user.id, "attack_percent") + academy_bonus
         power = compute_power(units, research, country_bonus, "attack", boost)
         air_power = compute_air_offense_power(units, research, country_bonus, boost)
@@ -171,7 +171,7 @@ async def resolve_group_attack(session: AsyncSession, attack: AllianceGroupAttac
         participant_data.append({"user": user, "units": units, "research": research, "power": power})
 
     target_units, target_research = await load_combat_units_and_research(session, target.id)
-    target_country_bonus = target.country.military_bonus_percent if target.country else 0.0
+    target_country_bonus = settings.NATION_MILITARY_BONUS_PERCENT
     target_boost = await get_active_boost_percent(session, target.id, "defense_percent")
     target_power = compute_power(
         target_units, target_research, target_country_bonus, "defense", target_boost
