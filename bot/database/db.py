@@ -1464,13 +1464,7 @@ async def init_db() -> None:
         await conn.run_sync(Base.metadata.create_all)
 
     async with async_session() as session:
-        result = await session.execute(select(Country))
-        existing_countries = list(result.scalars().all())
-        existing_country_names = {c.name_fa for c in existing_countries}
-        for c in DEFAULT_COUNTRIES:
-            if c["name_fa"] not in existing_country_names:
-                session.add(Country(**c))
-
+      
         await _seed_missing_by_key(session, BuildingType, DEFAULT_BUILDING_TYPES)
         await _seed_missing_by_key(session, UnitType, DEFAULT_UNIT_TYPES)
         await _seed_missing_by_key(session, ResearchType, DEFAULT_RESEARCH_TYPES)
