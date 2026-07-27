@@ -35,12 +35,6 @@ async def on_bot_added_to_chat(event: ChatMemberUpdated) -> None:
         )
 
 
-class Registration(StatesGroup):
-    waiting_for_force_join = State()
-    waiting_for_nickname = State()
-    waiting_for_country = State()
-
-
 def generate_referral_code() -> str:
     alphabet = string.ascii_uppercase + string.digits
     return "".join(secrets.choice(alphabet) for _ in range(6))
