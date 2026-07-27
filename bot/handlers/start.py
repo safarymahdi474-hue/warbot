@@ -10,21 +10,7 @@ from sqlalchemy import select
 
 from bot.config import settings
 from bot.database.db import get_session
-from bot.utils.context import current_room, user_scope
-from bot.utils.countries import get_taken_country_ids, is_country_taken
-from bot.database.models import (
-    BuildingType,
-    Country,
-    ItemType,
-    ResearchType,
-    UnitType,
-    User,
-    UserBuilding,
-    UserInventory,
-    UserResearch,
-    UserUnit,
-)
-from bot.keyboards.menus import countries_keyboard, main_menu_keyboard
+
 from bot.utils.force_join import FORCE_JOIN_TEXT, build_force_join_keyboard, get_unjoined_channels
 
 router = Router(name="start")
