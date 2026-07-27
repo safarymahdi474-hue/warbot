@@ -30,7 +30,8 @@ async def perform_spy(session: AsyncSession, spy_user: User, target: User) -> di
     spy_user.energy -= settings.SPY_ENERGY_COST
 
     target_units, target_research = await load_combat_units_and_research(session, target.id)
-    target_country_bonus = target.country.military_bonus_percent if target.country else 0.0
+    # بونوس نظامی حالا وابسته به کشور نیست؛ یه مقدار ثابت و یکسان برای همه‌ست
+    target_country_bonus = settings.NATION_MILITARY_BONUS_PERCENT
     target_defense_boost = await get_active_boost_percent(session, target.id, "defense_percent")
     real_power = compute_power(
         target_units, target_research, target_country_bonus, "defense", target_defense_boost
