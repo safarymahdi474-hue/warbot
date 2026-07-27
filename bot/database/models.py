@@ -47,8 +47,8 @@ class User(Base):
     username: Mapped[str | None] = mapped_column(String(64), nullable=True)
     nickname: Mapped[str] = mapped_column(String(32), nullable=False)
 
-    country_id: Mapped[int | None] = mapped_column(ForeignKey("countries.id"), nullable=True)
-    country: Mapped["Country"] = relationship(back_populates="users")
+  # لقب/کشور دلخواه - آزاد و متنی، ولی باید توی هر روم منحصربه‌فرد باشه
+    country_title: Mapped[str | None] = mapped_column(String(64), nullable=True)
 
     # --- پول و منابع پایه (فاز ۱: طلا. فاز منابع: نفت/آهن/غذا جدا میشن) ---
     gold: Mapped[int] = mapped_column(Integer, default=0)
