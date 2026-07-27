@@ -40,19 +40,6 @@ def generate_referral_code() -> str:
     return "".join(secrets.choice(alphabet) for _ in range(6))
 
 
-async def _get_sorted_countries(session) -> list[Country]:
-    """ترتیب پایدار (بر اساس id) که شماره‌ی صفحه‌ها هر بار یکسان بمونه."""
-    result = await session.execute(select(Country).order_by(Country.id))
-    return list(result.scalars().all())
-
-
-async def _build_countries_view(session, page: int):
-    """کشورها + آیدی کشورهای گرفته‌شده‌ی همین روم رو با هم برمی‌گردونه."""
-    countries = await _get_sorted_countries(session)
-    taken_ids = await get_taken_country_ids(session)
-    return countries_keyboard(countries, page=page, taken_country_ids=taken_ids)
-
-
 def _nickname_intro_text(chat_type: str) -> str:
     if chat_type == "private":
         return "🎮 به بازی خوش اومدی!\n\n" + "قبل از هر چیز، یه اسم/نیک‌نیم برای خودت انتخاب کن (۳ تا ۲۰ حرف):"
