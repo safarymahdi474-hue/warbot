@@ -135,7 +135,7 @@ class CountryStatement(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
-    country_id: Mapped[int] = mapped_column(ForeignKey("countries.id"))
+    ccountry_title: Mapped[str] = mapped_column(String(64))
     room_id: Mapped[int | None] = mapped_column(ForeignKey("rooms.id"), nullable=True)
     text: Mapped[str] = mapped_column(String(500))
     status: Mapped[str] = mapped_column(String(16), default="pending")
