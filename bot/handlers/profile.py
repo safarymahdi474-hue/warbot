@@ -61,7 +61,7 @@ async def _get_user_with_regen(telegram_id: int) -> User | None:
         await check_referral_milestone(session, user)
         await ensure_admin_flag(session, user)
         await session.commit()
-        await session.refresh(user, attribute_names=["country", "room"])
+        await session.refresh(user, attribute_names=["room"])
         return user
 
 
