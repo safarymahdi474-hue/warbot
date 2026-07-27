@@ -128,7 +128,6 @@ async def _leaderboard_text() -> str:
     async with get_session() as session:
         result = await session.execute(
             select(User)
-            .options(selectinload(User.country))
             .where(room_condition(User.room_id))
             .order_by(User.level.desc(), User.xp.desc())
             .limit(settings.LEADERBOARD_SIZE)
@@ -139,8 +138,8 @@ async def _leaderboard_text() -> str:
     lines = ["🏆 <b>جدول رتبه‌بندی برتر</b>\n"]
     for i, u in enumerate(users):
         rank_icon = medals[i] if i < 3 else f"{i + 1}."
-        country_flag = u.country.flag_emoji if u.country else "🏳️"
-        lines.append(f"{rank_icon} {country_flag} <b>{u.nickname}</b> — لول {u.level}")
+        title_note = f" ({u.country_title})" if u.country_title else ""
+        lines.append(f"{rank_icon} <b>{u.nickname}</b>{title_note} — لول {u.level}")
     if not users:
         lines.append("هنوز کسی ثبت‌نام نکرده.")
     return "\n".join(lines)
