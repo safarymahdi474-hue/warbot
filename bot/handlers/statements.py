@@ -8,7 +8,7 @@ from sqlalchemy import select
 from bot.config import settings
 from bot.database.db import get_session
 from bot.utils.context import user_scope
-from bot.database.models import Country, CountryStatement, User
+from bot.database.models import CountryStatement, User
 from bot.utils.statements import (
     approve_statement,
     build_review_text,
@@ -36,7 +36,7 @@ STATUS_LABELS = {
 
 MENU_TEXT = (
     "📜 <b>بیانیه ملی</b>\n\n"
-    "هر کاربری که یک کشور انتخاب کرده باشه می‌تونه به نمایندگی از اون کشور بیانیه رسمی بده.\n"
+    "هر کاربری که یک لقب/کشور برای خودش انتخاب کرده باشه می‌تونه به نمایندگی از اون لقب بیانیه رسمی بده.\n"
     "بیانیه اول برای بررسی به ادمین‌ها فرستاده میشه و بعد از تایید، توی کانال بیانیه‌ها منتشر میشه."
 )
 
@@ -98,8 +98,8 @@ async def cb_new_statement_start(callback: CallbackQuery, state: FSMContext) -> 
         if user is None:
             await callback.answer("هنوز ثبت‌نام نکردی!", show_alert=True)
             return
-        if user.country_id is None:
-            await callback.answer("تو هنوز کشوری انتخاب نکردی.", show_alert=True)
+        if user.country_title is None:
+            await callback.answer("تو هنوز لقب/کشوری نداری.", show_alert=True)
             return
 
         can_submit, remaining = await can_submit_statement(session, user.id)
@@ -137,8 +137,7 @@ async def process_statement_text(message: Message, state: FSMContext) -> None:
         session.add(statement)
         await session.flush()
 
-        country = await session.get(Country, user.country_id)
-        review_text = build_review_text(statement, country, user)
+        review_text = build_review_text(statement, user)
         statement_id = statement.id
         await session.commit()
 
@@ -335,7 +334,6 @@ async def cmd_pending_statements(message: Message) -> None:
             return
 
         for statement in pending:
-            country = await session.get(Country, statement.country_id)
             submitter = await session.get(User, statement.user_id)
-            text = build_review_text(statement, country, submitter)
+            text = build_review_text(statement, submitter)
             await message.answer(text, reply_markup=review_keyboard(statement.id), parse_mode="HTML")
