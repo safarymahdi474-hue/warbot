@@ -5,22 +5,22 @@ from bot.database.models import User
 from bot.utils.context import room_condition
 
 
-async def get_taken_country_ids(session: AsyncSession) -> set[int]:
+async def get_taken_country_titles(session: AsyncSession) -> set[str]:
     """
-    آی‌دی همه‌ی کشور/گروهک‌هایی که در همین روم (فضای بازی فعلی، بر اساس
-    current_room_id.get()) از قبل توسط یک کاربر انتخاب شدن. هر روم/پروفایل
-    اصلی مستقله، پس همون کشور می‌تونه توی روم‌های مختلف توسط افراد متفاوتی
-    انتخاب بشه - فقط داخل یک روم منحصربه‌فرده.
+    همه‌ی لقب/کشورهایی که همین الان توی همین روم (فضای بازی فعلی، بر اساس
+    current_room_id.get()) توسط یه کاربر گرفته شدن. هر روم/پروفایل اصلی
+    مستقله، پس یه لقب می‌تونه توی روم‌های مختلف توسط افراد متفاوتی گرفته
+    بشه - فقط داخل یک روم منحصربه‌فرده.
     """
     result = await session.execute(
-        select(User.country_id).where(
+        select(User.country_title).where(
             room_condition(User.room_id),
-            User.country_id.isnot(None),
+            User.country_title.isnot(None),
         )
     )
     return {row[0] for row in result.all()}
 
 
-async def is_country_taken(session: AsyncSession, country_id: int) -> bool:
-    taken_ids = await get_taken_country_ids(session)
-    return country_id in taken_ids
+async def is_title_taken(session: AsyncSession, title: str) -> bool:
+    taken_titles = await get_taken_country_titles(session)
+    return title.strip() in taken_titles
