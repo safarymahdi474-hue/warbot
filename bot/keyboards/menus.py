@@ -4,55 +4,6 @@ from bot.database.models import UserBuilding
 
 # هر صفحه حداکثر این تعداد کشور نشون میده (۴۰ کشور = ۲۰ ردیف + ۱ ردیف ناوبری،
 # جمعاً حداکثر ۲۱ دکمه در هر پیام - کاملاً زیر محدودیت ۱۰۰ تایی تلگرام)
-COUNTRIES_PAGE_SIZE = 40
-
-
-def countries_keyboard(
-    countries: list[Country], page: int = 0, taken_country_ids: set[int] | None = None
-) -> InlineKeyboardMarkup:
-    """
-    کیبورد صفحه‌بندی‌شده‌ی انتخاب کشور. countries باید از قبل به ترتیب پایدار
-    (مثلا بر اساس id) مرتب شده باشه تا شماره‌ی صفحه‌ها هر بار یکسان بمونه.
-
-    کشورهایی که id شون توی taken_country_ids باشه (یعنی توی همین روم یه نفر
-    دیگه قبلاً انتخابشون کرده) با تیک ✅ نشون داده میشن و دکمه‌شون غیرفعاله
-    (به‌جای pick_country، یه callback نمایشی/خطا می‌فرستن).
-    """
-    taken_country_ids = taken_country_ids or set()
-    total_pages = max(1, (len(countries) + COUNTRIES_PAGE_SIZE - 1) // COUNTRIES_PAGE_SIZE)
-    page = max(0, min(page, total_pages - 1))
-
-    start = page * COUNTRIES_PAGE_SIZE
-    page_items = countries[start : start + COUNTRIES_PAGE_SIZE]
-
-    rows = []
-    row = []
-    for i, c in enumerate(page_items, start=1):
-        if c.id in taken_country_ids:
-            text = f"✅ {c.flag_emoji} {c.name_fa}"
-            callback_data = "country_taken"
-        else:
-            text = f"{c.flag_emoji} {c.name_fa}"
-            callback_data = f"pick_country:{c.id}"
-
-        row.append(InlineKeyboardButton(text=text, callback_data=callback_data))
-        if i % 2 == 0:
-            rows.append(row)
-            row = []
-    if row:
-        rows.append(row)
-
-    if total_pages > 1:
-        nav_row = []
-        if page > 0:
-            nav_row.append(InlineKeyboardButton(text="⬅️ قبلی", callback_data=f"countries_page:{page - 1}"))
-        nav_row.append(InlineKeyboardButton(text=f"📄 {page + 1}/{total_pages}", callback_data="countries_noop"))
-        if page < total_pages - 1:
-            nav_row.append(InlineKeyboardButton(text="➡️ بعدی", callback_data=f"countries_page:{page + 1}"))
-        rows.append(nav_row)
-
-    return InlineKeyboardMarkup(inline_keyboard=rows)
-
 
 def main_menu_keyboard() -> InlineKeyboardMarkup:
     """
