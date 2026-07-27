@@ -238,7 +238,8 @@ async def resolve_bot_battle(
     strategy = get_strategy(strategy_key)
 
     attacker_units, attacker_research = await load_combat_units_and_research(session, attacker.id)
-    country_bonus = attacker.country.military_bonus_percent if attacker.country else 0.0
+    # بونوس نظامی حالا وابسته به کشور نیست؛ یه مقدار ثابت و یکسان برای همه‌ست
+    country_bonus = settings.NATION_MILITARY_BONUS_PERCENT
     attack_boost = await get_active_boost_percent(session, attacker.id, "attack_percent")
     attacker_power = compute_power(attacker_units, attacker_research, country_bonus, "attack", attack_boost)
     attacker_power = int(attacker_power * strategy["power_mult"])
@@ -308,8 +309,9 @@ async def resolve_pvp_battle(
     attacker_units, attacker_research = await load_combat_units_and_research(session, attacker.id)
     defender_units, defender_research = await load_combat_units_and_research(session, defender.id)
 
-    attacker_country_bonus = attacker.country.military_bonus_percent if attacker.country else 0.0
-    defender_country_bonus = defender.country.military_bonus_percent if defender.country else 0.0
+    # بونوس نظامی حالا وابسته به کشور نیست؛ یه مقدار ثابت و یکسان برای همه‌ست
+    attacker_country_bonus = settings.NATION_MILITARY_BONUS_PERCENT
+    defender_country_bonus = settings.NATION_MILITARY_BONUS_PERCENT
 
     attacker_attack_boost = await get_active_boost_percent(session, attacker.id, "attack_percent")
     defender_defense_boost = await get_active_boost_percent(session, defender.id, "defense_percent")
