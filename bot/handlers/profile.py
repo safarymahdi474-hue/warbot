@@ -33,14 +33,14 @@ def profile_keyboard() -> InlineKeyboardMarkup:
 
 def build_profile_text(user: User) -> str:
     xp_needed = xp_required_for_level(user.level)
-    country_name = f"{user.country.flag_emoji} {user.country.name_fa}" if user.country else "بدون کشور"
+    title_text = user.country_title or "بدون لقب"
     room_line = (
         f"🏠 فضای بازی: {user.room.title}\n" if user.room_id is not None else "🏠 فضای بازی: پروفایل اصلی\n"
     )
     return (
         room_line +
         f"👤 <b>{user.nickname}</b>\n"
-        f"🌍 کشور: {country_name}\n"
+        f"🏳️ لقب/کشور: {title_text}\n"
         f"⭐ سطح: {user.level}\n\n"
         f"XP: {user.xp}/{xp_needed}\n{make_bar(user.xp, xp_needed)}\n\n"
         f"❤️ جان: {user.hp}/{user.max_hp}\n{make_bar(user.hp, user.max_hp)}\n\n"
