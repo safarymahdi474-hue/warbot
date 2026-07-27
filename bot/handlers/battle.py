@@ -127,9 +127,7 @@ async def cb_attack_bot(callback: CallbackQuery) -> None:
     _, difficulty, strategy_key = callback.data.split(":")
 
     async with get_session() as session:
-        result = await session.execute(
-            select(User).options(selectinload(User.country)).where(*user_scope(callback.from_user.id))
-        )
+        result = await session.execute(select(User).where(*user_scope(callback.from_user.id)))
         attacker = result.scalar_one_or_none()
         if attacker is None:
             await callback.answer("هنوز ثبت‌نام نکردی!", show_alert=True)
@@ -263,9 +261,7 @@ async def cb_spy_pvp(callback: CallbackQuery) -> None:
     target_id = int(target_id_str)
 
     async with get_session() as session:
-        result = await session.execute(
-            select(User).options(selectinload(User.country)).where(*user_scope(callback.from_user.id))
-        )
+        result = await session.execute(select(User).where(*user_scope(callback.from_user.id)))
         spy_user = result.scalar_one_or_none()
         if spy_user is None:
             await callback.answer("هنوز ثبت‌نام نکردی!", show_alert=True)
@@ -276,7 +272,7 @@ async def cb_spy_pvp(callback: CallbackQuery) -> None:
             await callback.answer(error, show_alert=True)
             return
 
-        target = await session.get(User, target_id, options=[selectinload(User.country)])
+        target = await session.get(User, target_id)
         if target is None:
             await callback.answer("این بازیکن دیگه در دسترس نیست.", show_alert=True)
             return
@@ -313,9 +309,7 @@ async def cb_attack_pvp(callback: CallbackQuery) -> None:
     defender_id = int(defender_id_str)
 
     async with get_session() as session:
-        result = await session.execute(
-            select(User).options(selectinload(User.country)).where(*user_scope(callback.from_user.id))
-        )
+        result = await session.execute(select(User).where(*user_scope(callback.from_user.id)))
         attacker = result.scalar_one_or_none()
         if attacker is None:
             await callback.answer("هنوز ثبت‌نام نکردی!", show_alert=True)
@@ -328,7 +322,7 @@ async def cb_attack_pvp(callback: CallbackQuery) -> None:
             await session.commit()
             return
 
-        defender = await session.get(User, defender_id, options=[selectinload(User.country)])
+        defender = await session.get(User, defender_id)
         if defender is None:
             await callback.answer("این بازیکن دیگه در دسترس نیست.", show_alert=True)
             return
