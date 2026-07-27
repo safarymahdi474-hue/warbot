@@ -40,6 +40,24 @@ def generate_referral_code() -> str:
     return "".join(secrets.choice(alphabet) for _ in range(6))
 
 
+@router.message(Registration.waiting_for_nickname)
+async def process_nickname(message: Message, state: FSMContext) -> None:
+    nickname = (message.text or "").strip()
+    if not (3 <= len(nickname) <= 20):
+        await message.answer("نیک‌نیم باید بین ۳ تا ۲۰ حرف باشه. دوباره امتحان کن:")
+        return
+
+    await state.update_data(nickname=nickname)
+
+    await message.answer(
+        "عالی! حالا یه لقب/اسم کشور برای خودت انتخاب کن 🏳️\n"
+        f"(بین {settings.COUNTRY_TITLE_MIN_LENGTH} تا {settings.COUNTRY_TITLE_MAX_LENGTH} حرف)\n"
+        "این لقب باید توی همین گروه/چت منحصربه‌فرد باشه؛ یعنی هیچ‌کس دیگه‌ای توی "
+        "همین فضای بازی نمی‌تونه دقیقاً همین لقب رو داشته باشه."
+    )
+    await state.set_state(Registration.waiting_for_country_title)
+
+
 def _nickname_intro_text(chat_type: str) -> str:
     if chat_type == "private":
         return "🎮 به بازی خوش اومدی!\n\n" + "قبل از هر چیز، یه اسم/نیک‌نیم برای خودت انتخاب کن (۳ تا ۲۰ حرف):"
