@@ -2,7 +2,6 @@ from aiogram import F, Router
 from aiogram.filters import Command
 from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
 from sqlalchemy import select
-from sqlalchemy.orm import selectinload
 
 from bot.config import settings
 from bot.database.db import get_session
