@@ -17,23 +17,6 @@ class Base(DeclarativeBase):
     pass
 
 
-class Country(Base):
-    """
-    کشور/جناح قابل انتخاب. لیست اولیه رو در db.py سید می‌کنیم.
-    فازهای بعدی: هر کشور می‌تونه بونوس منابع/نظامی خاص خودش رو داشته باشه.
-    """
-    __tablename__ = "countries"
-
-    id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    name_fa: Mapped[str] = mapped_column(String(64), nullable=False)
-    flag_emoji: Mapped[str] = mapped_column(String(8), default="🏳️")
-    # بونوس‌های اختصاصی کشور (فاز نظامی/منابع بعدا استفاده میشه)
-    resource_bonus_percent: Mapped[float] = mapped_column(Float, default=0.0)
-    military_bonus_percent: Mapped[float] = mapped_column(Float, default=0.0)
-
-    users: Mapped[list["User"]] = relationship(back_populates="country")
-
-
 class User(Base):
     """
     پروفایل اصلی بازیکن. این هسته‌ی کل بازیه و بقیه‌ی جدول‌ها (ارتش، منابع،
@@ -47,7 +30,9 @@ class User(Base):
     username: Mapped[str | None] = mapped_column(String(64), nullable=True)
     nickname: Mapped[str] = mapped_column(String(32), nullable=False)
 
-  # لقب/کشور دلخواه - آزاد و متنی، ولی باید توی هر روم منحصربه‌فرد باشه
+    # لقب/کشور دلخواه - آزاد و متنی (جایگزین لیست ثابت کشورها). باید توی هر
+    # روم منحصربه‌فرد باشه؛ این یکتایی در سطح اپلیکیشن (bot/utils/countries.py)
+    # چک میشه، نه با UniqueConstraint دیتابیسی (چون room_id می‌تونه NULL باشه).
     country_title: Mapped[str | None] = mapped_column(String(64), nullable=True)
 
     # --- پول و منابع پایه (فاز ۱: طلا. فاز منابع: نفت/آهن/غذا جدا میشن) ---
@@ -128,15 +113,16 @@ class User(Base):
 
 class CountryStatement(Base):
     """
-    بیانیه‌ی رسمی که یک کاربر به نمایندگی از کشور انتخابیش ثبت می‌کنه.
+    بیانیه‌ی رسمی که یک کاربر به نمایندگی از لقب/کشور انتخابیش ثبت می‌کنه.
+    country_title یه snapshot از User.country_title موقع ثبت بیانیه‌ست.
     status: 'pending' (در انتظار بررسی ادمین) | 'approved' | 'rejected'
     """
     __tablename__ = "country_statements"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
-    ccountry_title: Mapped[str] = mapped_column(String(64))
     room_id: Mapped[int | None] = mapped_column(ForeignKey("rooms.id"), nullable=True)
+    country_title: Mapped[str] = mapped_column(String(64))
     text: Mapped[str] = mapped_column(String(500))
     status: Mapped[str] = mapped_column(String(16), default="pending")
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
