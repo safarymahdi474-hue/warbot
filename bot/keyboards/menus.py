@@ -2,8 +2,6 @@ from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
 from bot.database.models import UserBuilding
 
-# هر صفحه حداکثر این تعداد کشور نشون میده (۴۰ کشور = ۲۰ ردیف + ۱ ردیف ناوبری،
-# جمعاً حداکثر ۲۱ دکمه در هر پیام - کاملاً زیر محدودیت ۱۰۰ تایی تلگرام)
 
 def main_menu_keyboard() -> InlineKeyboardMarkup:
     """
