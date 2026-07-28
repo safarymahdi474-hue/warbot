@@ -24,3 +24,4 @@ async def get_taken_country_titles(session: AsyncSession) -> set[str]:
 async def is_title_taken(session: AsyncSession, title: str) -> bool:
     taken_titles = await get_taken_country_titles(session)
     return title.strip() in taken_titles
+
