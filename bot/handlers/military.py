@@ -125,67 +125,53 @@ def _defense_bonus(user_researches: list[UserResearch]) -> float:
 
 
 # ---------------------------------------------------------------------------
-# نمایش لیست ارتش (دسته‌بندی‌شده، با قفل نیروهای سطح‌نرسیده)
+# لایه‌ی ۱: منوی اصلی ارتش - فقط دکمه‌ی دسته‌ها (بدون لیست نیرو)
 # ---------------------------------------------------------------------------
 
-def build_army_text(
-    user: User, user_units: list[UserUnit], orders: list[TrainingOrder], atk_bonus: float, def_bonus: float
-) -> str:
-    lines = ["⚔️ <b>ارتش تو</b>\n"]
-    pending_by_type: dict[int, int] = {}
-    for o in orders:
-        pending_by_type[o.unit_type_id] = pending_by_type.get(o.unit_type_id, 0) + o.quantity
-
-    units_by_subcategory: dict[str, list[UserUnit]] = {}
-    for uu in user_units:
-        units_by_subcategory.setdefault(uu.unit_type.subcategory, []).append(uu)
-
+def build_army_summary_text(user_units: list[UserUnit], atk_bonus: float, def_bonus: float) -> str:
     total_attack = total_defense = 0
-    for subcat in SUBCATEGORY_ORDER:
-        rows = units_by_subcategory.get(subcat)
-        if not rows:
-            continue
-        rows.sort(key=lambda uu: uu.unit_type.tier)
-        lines.append(f"\n<b>{SUBCATEGORY_LABELS[subcat]}</b>")
-        for uu in rows:
-            ut = uu.unit_type
-            atk = effective_attack(ut, atk_bonus)
-            dfn = effective_defense(ut, def_bonus)
-            total_attack += atk * uu.quantity
-            total_defense += dfn * uu.quantity
+    owned_subcats: set[str] = set()
+    for uu in user_units:
+        ut = uu.unit_type
+        if uu.quantity > 0:
+            owned_subcats.add(ut.subcategory)
+        atk = effective_attack(ut, atk_bonus)
+        dfn = effective_defense(ut, def_bonus)
+        total_attack += atk * uu.quantity
+        total_defense += dfn * uu.quantity
 
-            if user.level < ut.min_player_level:
-                lines.append(f"  🔒 {ut.icon} {ut.name_fa} — نیاز به سطح {ut.min_player_level}")
-                continue
-
-            pending = pending_by_type.get(ut.id, 0)
-            pending_txt = f" (⏳ +{pending})" if pending else ""
-            lines.append(f"  {ut.icon} <b>{ut.name_fa}</b>: {uu.quantity} عدد{pending_txt}")
-
-    lines.append(f"\n📊 مجموع قدرت — ⚔️ حمله: {total_attack} | 🛡️ دفاع: {total_defense}")
+    lines = [
+        "⚔️ <b>ارتش تو</b>\n",
+        f"📊 مجموع قدرت — ⚔️ حمله: {total_attack} | 🛡️ دفاع: {total_defense}\n",
+        "یه دسته رو انتخاب کن تا نیروهاش رو ببینی:",
+    ]
     return "\n".join(lines)
 
 
-def army_keyboard(user: User, user_units: list[UserUnit]) -> InlineKeyboardMarkup:
-    rows = []
-    units_by_subcategory: dict[str, list[UserUnit]] = {}
+def army_categories_keyboard(user: User, user_units: list[UserUnit]) -> InlineKeyboardMarkup:
+    """هر دسته یه دکمه‌ست. اگه هیچ نیرویی تو یه دسته باز نشده باشه، دکمه‌ش قفل نشون داده میشه."""
+    unlocked_by_subcat: dict[str, bool] = {}
     for uu in user_units:
-        units_by_subcategory.setdefault(uu.unit_type.subcategory, []).append(uu)
+        ut = uu.unit_type
+        if user.level >= ut.min_player_level:
+            unlocked_by_subcat[ut.subcategory] = True
+        else:
+            unlocked_by_subcat.setdefault(ut.subcategory, False)
 
+    rows = []
+    row = []
     for subcat in SUBCATEGORY_ORDER:
-        unlocked = [uu for uu in units_by_subcategory.get(subcat, []) if user.level >= uu.unit_type.min_player_level]
-        if not unlocked:
+        if subcat not in unlocked_by_subcat:
             continue
-        unlocked.sort(key=lambda uu: uu.unit_type.tier)
-        row = []
-        for uu in unlocked:
-            ut = uu.unit_type
-            row.append(InlineKeyboardButton(text=f"{ut.icon} {ut.name_fa}", callback_data=f"unit_menu:{ut.id}"))
-            if len(row) == 2:
-                rows.append(row)
-                row = []
-        if row:
+        label = SUBCATEGORY_LABELS[subcat]
+        if not unlocked_by_subcat[subcat]:
+            label = f"🔒 {label}"
+        row.append(InlineKeyboardButton(text=label, callback_data=f"army_cat:{subcat}"))
+        if len(row) == 2:
             rows.append(row)
+            row = []
+    if row:
+        rows.append(row)
 
     rows.append([InlineKeyboardButton(text="🔬 تحقیق و توسعه", callback_data="show_research")])
     rows.append([InlineKeyboardButton(text="🔄 بروزرسانی", callback_data="show_army")])
@@ -200,8 +186,8 @@ async def _army_view(telegram_id: int):
             return NOT_REGISTERED_MSG, None
         atk_bonus = _attack_bonus(user_researches)
         def_bonus = _defense_bonus(user_researches)
-        text = build_army_text(user, user_units, orders, atk_bonus, def_bonus)
-        return text, army_keyboard(user, user_units)
+        text = build_army_summary_text(user_units, atk_bonus, def_bonus)
+        return text, army_categories_keyboard(user, user_units)
 
 
 @router.message(Command("army"))
@@ -242,16 +228,96 @@ async def cb_army(callback: CallbackQuery) -> None:
 
 
 # ---------------------------------------------------------------------------
-# جزئیات + خرید یک نوع نیرو (بدون ارتقای سطحی - هر نیرو خودش یه ردیف ثابته)
+# لایه‌ی ۲: نیروهای داخل یک دسته (با زدن دکمه‌ی دسته باز میشه)
 # ---------------------------------------------------------------------------
 
-def unit_detail_keyboard(unit_type_id: int) -> InlineKeyboardMarkup:
+def build_category_text(subcat: str, user: User, user_units: list[UserUnit], orders: list[TrainingOrder]) -> str:
+    label = SUBCATEGORY_LABELS.get(subcat, subcat)
+    lines = [f"{label}\n"]
+
+    pending_by_type: dict[int, int] = {}
+    for o in orders:
+        pending_by_type[o.unit_type_id] = pending_by_type.get(o.unit_type_id, 0) + o.quantity
+
+    rows = [uu for uu in user_units if uu.unit_type.subcategory == subcat]
+    rows.sort(key=lambda uu: uu.unit_type.tier)
+
+    if not rows:
+        lines.append("هیچ نیرویی تو این دسته پیدا نشد.")
+        return "\n".join(lines)
+
+    for uu in rows:
+        ut = uu.unit_type
+        if user.level < ut.min_player_level:
+            lines.append(f"🔒 {ut.icon} {ut.name_fa} — نیاز به سطح {ut.min_player_level}")
+            continue
+        pending = pending_by_type.get(ut.id, 0)
+        pending_txt = f" (⏳ +{pending})" if pending else ""
+        lines.append(f"{ut.icon} <b>{ut.name_fa}</b>: {uu.quantity} عدد{pending_txt}")
+
+    return "\n".join(lines)
+
+
+def category_units_keyboard(subcat: str, user: User, user_units: list[UserUnit]) -> InlineKeyboardMarkup:
+    rows = []
+    unlocked = [
+        uu for uu in user_units
+        if uu.unit_type.subcategory == subcat and user.level >= uu.unit_type.min_player_level
+    ]
+    unlocked.sort(key=lambda uu: uu.unit_type.tier)
+
+    row = []
+    for uu in unlocked:
+        ut = uu.unit_type
+        row.append(InlineKeyboardButton(text=f"{ut.icon} {ut.name_fa}", callback_data=f"unit_menu:{ut.id}"))
+        if len(row) == 2:
+            rows.append(row)
+            row = []
+    if row:
+        rows.append(row)
+
+    rows.append([InlineKeyboardButton(text="🔙 بازگشت به دسته‌ها", callback_data="show_army")])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+@router.callback_query(F.data.startswith("army_cat:"))
+async def cb_army_category(callback: CallbackQuery) -> None:
+    subcat = callback.data.split(":")[1]
+
+    async with get_session() as session:
+        user, user_units, orders, user_researches = await _load_state(session, callback.from_user.id)
+        if user is None:
+            await callback.answer(NOT_REGISTERED_MSG, show_alert=True)
+            return
+
+        text = build_category_text(subcat, user, user_units, orders)
+        keyboard = category_units_keyboard(subcat, user, user_units)
+
+    sent_privately, group_note = await deliver_sensitive_content(
+        callback.bot, current_room(), callback.message.chat.type, callback.from_user.id, text, keyboard
+    )
+    if sent_privately:
+        await callback.answer(group_note, show_alert=True)
+        return
+
+    try:
+        await callback.message.edit_text(text, reply_markup=keyboard, parse_mode="HTML")
+    except Exception:
+        await callback.message.answer(text, reply_markup=keyboard, parse_mode="HTML")
+    await callback.answer()
+
+
+# ---------------------------------------------------------------------------
+# لایه‌ی ۳: جزئیات + خرید یک نوع نیرو خاص
+# ---------------------------------------------------------------------------
+
+def unit_detail_keyboard(unit_type_id: int, subcat: str) -> InlineKeyboardMarkup:
     rows = [
         [
             InlineKeyboardButton(text=f"🛒 خرید {q}", callback_data=f"buy_unit:{unit_type_id}:{q}")
             for q in BUY_QUANTITIES
         ],
-        [InlineKeyboardButton(text="🔙 بازگشت", callback_data="show_army")],
+        [InlineKeyboardButton(text="🔙 بازگشت به این دسته", callback_data=f"army_cat:{subcat}")],
     ]
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
@@ -297,14 +363,15 @@ async def cb_unit_menu(callback: CallbackQuery) -> None:
             await callback.answer(f"این نیرو نیاز به سطح {uu.unit_type.min_player_level} داره.", show_alert=True)
             return
 
+        subcat = uu.unit_type.subcategory
         text = build_unit_detail_text(
             uu, _training_speed_bonus(user_researches), _attack_bonus(user_researches), _defense_bonus(user_researches)
         )
 
     try:
-        await callback.message.edit_text(text, reply_markup=unit_detail_keyboard(unit_type_id), parse_mode="HTML")
+        await callback.message.edit_text(text, reply_markup=unit_detail_keyboard(unit_type_id, subcat), parse_mode="HTML")
     except Exception:
-        await callback.message.answer(text, reply_markup=unit_detail_keyboard(unit_type_id), parse_mode="HTML")
+        await callback.message.answer(text, reply_markup=unit_detail_keyboard(unit_type_id, subcat), parse_mode="HTML")
     await callback.answer()
 
 
@@ -336,9 +403,14 @@ async def cb_buy_unit(callback: CallbackQuery) -> None:
         await record_progress(session, user, "train_units", qty)
         await session.commit()
 
+        subcat = unit_type.subcategory
         await callback.answer(f"✅ آموزش {qty} {unit_type.name_fa} شروع شد!", show_alert=True)
 
-    text, keyboard = await _army_view(callback.from_user.id)
+    async with get_session() as session:
+        user, user_units, orders, user_researches = await _load_state(session, callback.from_user.id)
+        text = build_category_text(subcat, user, user_units, orders)
+        keyboard = category_units_keyboard(subcat, user, user_units)
+
     try:
         await callback.message.edit_text(text, reply_markup=keyboard, parse_mode="HTML")
     except Exception:
