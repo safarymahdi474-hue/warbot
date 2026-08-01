@@ -19,11 +19,6 @@ class Settings:
     XP_BASE_TO_NEXT_LEVEL: int = 100  # XP لازم برای لول ۲
     XP_GROWTH_FACTOR: float = 1.35  # هر لول چقدر سخت‌تر بشه
 
-    # --- لقب/کشور (سیستم جدید - جایگزین لیست ثابت کشورها) ---
-    COUNTRY_TITLE_MIN_LENGTH: int = 3
-    COUNTRY_TITLE_MAX_LENGTH: int = 30
-    NATION_MILITARY_BONUS_PERCENT: float = 5.0  # بونوس ثابت و یکسان برای همه (قبلاً وابسته به کشور بود)
-    
     # --- منابع و ساختمان (فاز ۲) ---
     BASE_RESOURCE_STORAGE: int = 1000  # سقف اولیه‌ی هر منبع (نفت/آهن/غذا) قبل از ساخت انبار
     BASE_URANIUM_STORAGE: int = 200  # اورانیوم کمیابه، سقفش خیلی کوچیک‌تره
@@ -33,6 +28,16 @@ class Settings:
     # --- ارتش و تحقیقات (فاز ۳) ---
     RESEARCH_COST_GROWTH: float = 1.5
     RESEARCH_TIME_GROWTH: float = 1.3
+    UNIT_PRICE_MULTIPLIER: float = 0.8  # ضریب قیمت نیروها: ۱ یعنی بدون تغییر، ۰.۸ یعنی ۲۰٪ ارزون‌تر
+
+    # --- مجروح شدن به‌جای نابودی کامل ---
+    WOUNDED_PERCENT_OF_LOSSES: float = 0.7  # از هر تلفات جنگی، چند درصد به‌جای نابودی کامل فقط مجروح میشن
+    HEAL_COST_PERCENT: int = 25  # هزینه‌ی درمان هر واحد مجروح، چند درصد از هزینه‌ی آموزش از صفره
+
+    # --- اعزام نیرو (زمان رسیدن قبل از نبرد، بر اساس نیروی انتخاب‌شده) ---
+    EXPEDITION_MIN_MINUTES: int = 1
+    EXPEDITION_MAX_MINUTES: int = 60
+    EXPEDITION_QUANTITY_EXTRA_DIVISOR: int = 200  # هر ۲۰۰ نیروی اعزامی، ۱ دقیقه به زمان سفر اضافه میشه
 
     # --- پدافند هوایی (بر پایه‌ی نیرو، نه تحقیق) ---
     AIR_DEFENSE_POWER_PER_PERCENT: float = 50.0  # هر ۵۰ واحد قدرت پدافندی = ۱٪ کاهش قدرت هوایی حریف
@@ -48,6 +53,11 @@ class Settings:
     PVP_LOOT_PERCENT: int = 15  # چند درصد از منابع بازنده غارت میشه
     PVP_LEVEL_RANGE: int = 3  # فقط بازیکن‌های هم‌سطح (±) قابل حمله‌ان
     PVP_TARGETS_SHOWN: int = 5
+
+    # --- تصرف خاک (Territory) ---
+    STARTING_TERRITORY_COUNT: int = 3  # تعداد خاک مادری هر بازیکن تازه‌وارد
+    MIN_TERRITORY_KEPT: int = 1  # هیچ بازیکنی نمی‌تونه کمتر از این مقدار خاک داشته باشه (هیچ‌وقت کاملاً بی‌خاک نمیشه)
+    TERRITORY_CAPTURE_ENABLED: bool = True  # اگه False بشه، برد PvP دیگه خاک تصرف نمی‌کنه
 
     # --- جاسوسی (تنوع‌بخشی نبرد) ---
     SPY_GOLD_COST: int = 50
