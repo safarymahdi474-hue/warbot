@@ -30,8 +30,14 @@ from bot.handlers import (
     start,
     statements,
     support,
+    territory,
 )
 from bot.middlewares.ban_check import BanCheckMiddleware
+from bot.middlewares.panel_ownership import (
+    PanelOwnershipCallbackMiddleware,
+    PanelOwnershipMessageMiddleware,
+    PanelOwnershipRequestMiddleware,
+)
 from bot.middlewares.room_context import RoomContextMiddleware
 
 logging.basicConfig(level=logging.INFO)
@@ -47,6 +53,7 @@ PLAYER_COMMANDS = [
     BotCommand(command="attack", description="🗡️ حمله (بات یا PvP)"),
     BotCommand(command="reports", description="📜 گزارش نبردهای اخیر"),
     BotCommand(command="pvpseason", description="📅 رتبه‌بندی هفتگی PvP"),
+    BotCommand(command="territory", description="🗺️ خاک‌های من"),
     BotCommand(command="missions", description="🎯 ماموریت‌های روزانه و هفتگی"),
     BotCommand(command="rewards", description="🎁 صندوق روزانه، هدیه، گردونه شانس"),
     BotCommand(command="alliance", description="🏛️ مدیریت اتحاد"),
@@ -83,8 +90,18 @@ async def main() -> None:
         token=settings.BOT_TOKEN,
         default=DefaultBotProperties(parse_mode=ParseMode.HTML),
     )
+    # باید قبل از هر استفاده‌ی دیگه‌ای از bot ثبت بشه تا همه‌ی
+    # sendMessage/editMessageText/editMessageReplyMarkup ها رو رهگیری کنه
+    bot.session.middleware(PanelOwnershipRequestMiddleware())
+
     await set_bot_commands(bot)
     dp = Dispatcher(storage=MemoryStorage())
+
+    # این دوتا باید اول از همه ثبت بشن: هم current_owner_id رو درست ست می‌کنن،
+    # هم قبل از هر کوئری اضافه به دیتابیس جلوی کلیک روی پنل دیگران رو می‌گیرن
+    dp.message.middleware(PanelOwnershipMessageMiddleware())
+    dp.callback_query.middleware(PanelOwnershipCallbackMiddleware())
+
     dp.message.middleware(RoomContextMiddleware())
     dp.callback_query.middleware(RoomContextMiddleware())
     dp.message.middleware(BanCheckMiddleware())
@@ -96,6 +113,7 @@ async def main() -> None:
     dp.include_router(resources.router)
     dp.include_router(military.router)
     dp.include_router(battle.router)
+    dp.include_router(territory.router)
     dp.include_router(missions.router)
     dp.include_router(rewards.router)
     dp.include_router(alliance.router)
@@ -112,6 +130,11 @@ async def main() -> None:
     dp.include_router(admin.router)
 
     await bot.delete_webhook(drop_pending_updates=True)
+
+    # اعزام‌هایی که هنوز نتیجه‌شون اعلام نشده (مثلاً وسط انتظار ری‌استارت شده) رو
+    # دوباره زمان‌بندی می‌کنه؛ اگه زمان رسیدنشون گذشته باشه، فوراً حل میشن.
+    asyncio.create_task(battle.recover_pending_expeditions(bot))
+
     await dp.start_polling(bot, allowed_updates=dp.resolve_used_update_types())
 
 
