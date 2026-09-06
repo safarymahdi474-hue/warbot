@@ -64,41 +64,167 @@ def get_strategy(key: str) -> dict:
 # اتفاق‌های شانسی حین نبرد - قبل از تعیین برنده رخ می‌دن و قدرت‌ها رو تغییر می‌دن
 # ---------------------------------------------------------------------------
 BATTLE_EVENTS = [
-    {"key": "none", "weight": 55, "side": None, "power_mult": 1.0, "label": None},
+    {"key": "none", "weight": 30, "side": None, "power_mult": 1.0, "label": None},
     {
         "key": "ambush",
-        "weight": 10,
+        "weight": 6,
         "side": "defender",
         "power_mult": 1.25,
         "label": "🌙 <b>کمین!</b> حریف غافلگیرت کرد و قدرتش موقتاً بالا رفت.",
     },
     {
         "key": "critical_hit",
-        "weight": 10,
+        "weight": 6,
         "side": "attacker",
         "power_mult": 1.30,
         "label": "💥 <b>ضربه‌ی بحرانی!</b> قدرت حمله‌ت به‌طرز غیرمنتظره‌ای بالا رفت.",
     },
     {
         "key": "intel",
-        "weight": 8,
+        "weight": 5,
         "side": "attacker",
         "power_mult": 1.15,
         "label": "🕵️ <b>اطلاعات جاسوسی!</b> نقطه‌ضعف حریف رو پیدا کردی.",
     },
     {
         "key": "reinforcements",
-        "weight": 8,
+        "weight": 5,
         "side": "defender",
         "power_mult": 1.20,
         "label": "🪖 <b>نیروی کمکی!</b> به حریف کمک رسید و قدرتش بیشتر شد.",
     },
     {
         "key": "sandstorm",
-        "weight": 9,
+        "weight": 5,
         "side": "both",
         "power_mult": 0.85,
         "label": "🌪️ <b>توفان شن!</b> دید و هماهنگی هر دو طرف کم شد و قدرت هر دو افت کرد.",
+    },
+    {
+        "key": "heavy_rain",
+        "weight": 4,
+        "side": "both",
+        "power_mult": 0.90,
+        "label": "🌧️ <b>باران شدید!</b> حرکت نیروها کند شد و قدرت هر دو طرف کمی افت کرد.",
+    },
+    {
+        "key": "fog",
+        "weight": 4,
+        "side": "attacker",
+        "power_mult": 0.80,
+        "label": "🌫️ <b>مه غلیظ!</b> دید مهاجم کم شد و قدرت حمله‌ش افت کرد.",
+    },
+    {
+        "key": "heatwave",
+        "weight": 4,
+        "side": "defender",
+        "power_mult": 0.85,
+        "label": "🥵 <b>گرمای شدید!</b> نیروهای مدافع خسته شدن و قدرتشون افت کرد.",
+    },
+    {
+        "key": "supply_drop",
+        "weight": 5,
+        "side": "attacker",
+        "power_mult": 1.18,
+        "label": "📦 <b>پشتیبانی هوایی!</b> یه محموله‌ی تسلیحاتی به‌موقع رسید و قدرت حمله بالا رفت.",
+    },
+    {
+        "key": "fuel_shortage",
+        "weight": 4,
+        "side": "attacker",
+        "power_mult": 0.82,
+        "label": "⛽ <b>کمبود سوخت!</b> بخشی از ماشین‌آلات مهاجم متوقف موند.",
+    },
+    {
+        "key": "high_morale",
+        "weight": 5,
+        "side": "attacker",
+        "power_mult": 1.12,
+        "label": "🔥 <b>روحیه‌ی بالا!</b> نیروهای مهاجم با انگیزه‌ی زیاد جنگیدن.",
+    },
+    {
+        "key": "mutiny",
+        "weight": 3,
+        "side": "defender",
+        "power_mult": 0.75,
+        "label": "😨 <b>سرپیچی!</b> بخشی از نیروهای مدافع از دستور سرپیچی کردن و هماهنگیشون به‌هم ریخت.",
+    },
+    {
+        "key": "urban_combat",
+        "weight": 4,
+        "side": "defender",
+        "power_mult": 1.22,
+        "label": "🏙️ <b>نبرد خیابانی!</b> مدافع تو زمین آشنای خودش جنگید و برتری گرفت.",
+    },
+    {
+        "key": "mountain_terrain",
+        "weight": 4,
+        "side": "attacker",
+        "power_mult": 0.88,
+        "label": "⛰️ <b>زمین کوهستانی!</b> پیشروی مهاجم سخت‌تر شد.",
+    },
+    {
+        "key": "signal_jamming",
+        "weight": 4,
+        "side": "both",
+        "power_mult": 0.92,
+        "label": "📡 <b>پارازیت رادیویی!</b> ارتباطات هر دو طرف مختل شد و هماهنگی افت کرد.",
+    },
+    {
+        "key": "satellite_recon",
+        "weight": 4,
+        "side": "attacker",
+        "power_mult": 1.20,
+        "label": "🛰️ <b>شناسایی ماهواره‌ای!</b> مهاجم از قبل نقشه‌ی دقیقی از دفاع حریف داشت.",
+    },
+    {
+        "key": "field_medic",
+        "weight": 4,
+        "side": None,
+        "power_mult": 1.0,
+        "label": "🩺 <b>پزشک میدانی!</b> امدادگرها سریع به مجروح‌ها رسیدن (تلفات این نبرد کمی کمتره).",
+    },
+    {
+        "key": "lucky_strike",
+        "weight": 3,
+        "side": "attacker",
+        "power_mult": 1.35,
+        "label": "🍀 <b>شانس محض!</b> یه ضربه‌ی کاملاً شانسی نتیجه رو به نفع مهاجم چرخوند.",
+    },
+    {
+        "key": "misfire",
+        "weight": 3,
+        "side": "attacker",
+        "power_mult": 0.78,
+        "label": "💦 <b>خرابی فنی!</b> چندتا از تسلیحات مهاجم درست کار نکردن.",
+    },
+    {
+        "key": "night_raid",
+        "weight": 4,
+        "side": "attacker",
+        "power_mult": 1.16,
+        "label": "🌑 <b>حمله‌ی شبانه!</b> غافلگیری تو تاریکی به نفع مهاجم تموم شد.",
+    },
+    {
+        "key": "civilian_unrest",
+        "weight": 3,
+        "side": "defender",
+        "power_mult": 0.88,
+        "label": "📢 <b>ناآرامی داخلی!</b> توجه مدافع پخش شد و دفاعش ضعیف‌تر شد.",
+    },
+    {
+        "key": "elite_squad",
+        "weight": 3,
+        "side": "defender",
+        "power_mult": 1.28,
+        "label": "🎖️ <b>گردان ویژه!</b> یه یگان نخبه وارد میدون دفاع شد.",
+    },
+    {
+        "key": "sabotage",
+        "weight": 3,
+        "side": "defender",
+        "power_mult": 0.80,
+        "label": "🧨 <b>خرابکاری!</b> یکی از پایگاه‌های مدافع از داخل ضربه خورد.",
     },
 ]
 
@@ -208,8 +334,13 @@ def air_defense_reduction_percent(air_defense_power: int) -> float:
 
 
 def destroy_units(units: list[UserUnit], loss_percent: float) -> int:
-    """به تناسب loss_percent از هر نوع نیرو نابود می‌کنه. خروجی: تعداد کل نابودشده."""
-    destroyed = 0
+    """
+    به تناسب loss_percent از هر نوع نیرو تلفات می‌ده. بخشی از این تلفات
+    (settings.WOUNDED_PERCENT_OF_LOSSES) به‌جای نابودی کامل، مجروح میشه و با
+    هزینه‌ی کم (bot/utils/military.py -> heal_cost) قابل برگردوندنه.
+    خروجی: تعداد کل تلفات (کشته + مجروح) - برای نمایش تو گزارش نبرد.
+    """
+    total_lost = 0
     for uu in units:
         if uu.quantity <= 0:
             continue
@@ -217,9 +348,16 @@ def destroy_units(units: list[UserUnit], loss_percent: float) -> int:
         if loss <= 0 and uu.quantity > 0 and loss_percent > 0:
             loss = 1 if random.random() < loss_percent * 4 else 0  # واحد کم هم شانس کمی برای از دست رفتن داره
         loss = min(loss, uu.quantity)
+        if loss <= 0:
+            continue
+
+        wounded = int(loss * settings.WOUNDED_PERCENT_OF_LOSSES)
+        dead = loss - wounded
+
         uu.quantity -= loss
-        destroyed += loss
-    return destroyed
+        uu.wounded_quantity += wounded
+        total_lost += loss
+    return total_lost
 
 
 def can_attack(user: User) -> str | None:
@@ -232,7 +370,11 @@ def can_attack(user: User) -> str | None:
 
 
 async def resolve_bot_battle(
-    session: AsyncSession, attacker: User, difficulty: str, strategy_key: str = "balanced"
+    session: AsyncSession,
+    attacker: User,
+    difficulty: str,
+    strategy_key: str = "balanced",
+    sent_units: dict[int, int] | None = None,
 ) -> BattleReport:
     diff = BOT_DIFFICULTIES[difficulty]
     strategy = get_strategy(strategy_key)
@@ -241,7 +383,14 @@ async def resolve_bot_battle(
     # بونوس نظامی حالا وابسته به کشور نیست؛ یه مقدار ثابت و یکسان برای همه‌ست
     country_bonus = settings.NATION_MILITARY_BONUS_PERCENT
     attack_boost = await get_active_boost_percent(session, attacker.id, "attack_percent")
-    attacker_power = compute_power(attacker_units, attacker_research, country_bonus, "attack", attack_boost)
+    if sent_units is not None:
+        from bot.utils.expedition import compute_power_from_sent
+
+        attacker_power = compute_power_from_sent(
+            attacker_units, sent_units, attacker_research, country_bonus, "attack", attack_boost
+        )
+    else:
+        attacker_power = compute_power(attacker_units, attacker_research, country_bonus, "attack", attack_boost)
     attacker_power = int(attacker_power * strategy["power_mult"])
 
     npc_power = int(max(attacker_power, 100) * diff["power_mult"] * random.uniform(0.85, 1.15))
@@ -257,7 +406,6 @@ async def resolve_bot_battle(
     roll_attacker = attacker_power * random.uniform(0.9, 1.1)
     roll_npc = npc_power * random.uniform(0.9, 1.1)
 
-    attacker.energy -= settings.ATTACK_ENERGY_COST
     won = roll_attacker >= roll_npc
 
     if won:
@@ -274,7 +422,12 @@ async def resolve_bot_battle(
     medicine_bonus = get_bonus_percent(attacker_research, "hp_loss_reduction_percent")
     hp_loss = int(hp_loss * max(0.0, 1 - medicine_bonus / 100))
     attacker.hp = max(1, attacker.hp - hp_loss)
-    units_lost = destroy_units(attacker_units, unit_loss_percent)
+    if sent_units is not None:
+        from bot.utils.expedition import apply_sent_losses
+
+        units_lost = apply_sent_losses(attacker_units, sent_units, unit_loss_percent)
+    else:
+        units_lost = destroy_units(attacker_units, unit_loss_percent)
     attacker.gold += gold_reward
     if won:
         attacker.battles_won_total += 1
@@ -302,7 +455,11 @@ async def resolve_bot_battle(
 
 
 async def resolve_pvp_battle(
-    session: AsyncSession, attacker: User, defender: User, strategy_key: str = "balanced"
+    session: AsyncSession,
+    attacker: User,
+    defender: User,
+    strategy_key: str = "balanced",
+    sent_units: dict[int, int] | None = None,
 ) -> BattleReport:
     strategy = get_strategy(strategy_key)
 
@@ -325,12 +482,22 @@ async def resolve_pvp_battle(
             )
             attacker_attack_boost += academy_bonus
 
-    attacker_power_raw = compute_power(
-        attacker_units, attacker_research, attacker_country_bonus, "attack", attacker_attack_boost
-    )
-    attacker_air_offense_raw = compute_air_offense_power(
-        attacker_units, attacker_research, attacker_country_bonus, attacker_attack_boost
-    )
+    if sent_units is not None:
+        from bot.utils.expedition import compute_air_offense_power_from_sent, compute_power_from_sent
+
+        attacker_power_raw = compute_power_from_sent(
+            attacker_units, sent_units, attacker_research, attacker_country_bonus, "attack", attacker_attack_boost
+        )
+        attacker_air_offense_raw = compute_air_offense_power_from_sent(
+            attacker_units, sent_units, attacker_research, attacker_country_bonus, attacker_attack_boost
+        )
+    else:
+        attacker_power_raw = compute_power(
+            attacker_units, attacker_research, attacker_country_bonus, "attack", attacker_attack_boost
+        )
+        attacker_air_offense_raw = compute_air_offense_power(
+            attacker_units, attacker_research, attacker_country_bonus, attacker_attack_boost
+        )
     attacker_air_ratio = (attacker_air_offense_raw / attacker_power_raw) if attacker_power_raw > 0 else 0.0
 
     attacker_power = int(attacker_power_raw * strategy["power_mult"])
@@ -356,7 +523,6 @@ async def resolve_pvp_battle(
         attacker_air_power_effective = attacker_power * attacker_air_ratio
         attacker_power = int(attacker_power - attacker_air_power_effective * (air_reduction / 100))
 
-    attacker.energy -= settings.ATTACK_ENERGY_COST
 
     roll_attacker = attacker_power * random.uniform(0.9, 1.1)
     roll_defender = defender_power * random.uniform(0.9, 1.1)
@@ -388,7 +554,12 @@ async def resolve_pvp_battle(
     attacker.hp = max(1, attacker.hp - attacker_hp_loss)
     defender.hp = max(1, defender.hp - defender_hp_loss)
 
-    attacker_units_lost = destroy_units(attacker_units, attacker_unit_loss_pct)
+    if sent_units is not None:
+        from bot.utils.expedition import apply_sent_losses
+
+        attacker_units_lost = apply_sent_losses(attacker_units, sent_units, attacker_unit_loss_pct)
+    else:
+        attacker_units_lost = destroy_units(attacker_units, attacker_unit_loss_pct)
     defender_units_lost = destroy_units(defender_units, defender_unit_loss_pct)
 
     if attacker_won:
@@ -411,6 +582,27 @@ async def resolve_pvp_battle(
     xp_reward = int(xp_reward * xp_multiplier)
     leveled_up = add_xp(attacker, xp_reward)
 
+    # 🗺️ تصرف خاک: فقط وقتی مهاجم می‌بره، بخشی از خاک بازنده تصرف میشه.
+    # بازنده هیچ‌وقت کمتر از MIN_TERRITORY_KEPT نمی‌مونه (پس‌گیری با حمله‌ی
+    # برعکس هم دقیقاً از همین مسیر انجام میشه).
+    territory_captured = 0
+    if attacker_won and settings.TERRITORY_CAPTURE_ENABLED:
+        capturable = max(0, defender.territory_count - settings.MIN_TERRITORY_KEPT)
+        if capturable > 0:
+            territory_captured = min(
+                capturable, max(1, int(defender.territory_count * settings.TERRITORY_CAPTURE_PERCENT / 100))
+            )
+            defender.territory_count -= territory_captured
+            attacker.territory_count += territory_captured
+
+    # 🎖️ لیگ‌بندی: برنده کاپ می‌گیره، بازنده کاپ از دست می‌ده (فارغ از اینکه مهاجم بوده یا مدافع).
+    from bot.utils.league import apply_league_result
+
+    if attacker_won:
+        cup_gain, cup_loss = apply_league_result(winner=attacker, loser=defender)
+    else:
+        cup_gain, cup_loss = apply_league_result(winner=defender, loser=attacker)
+
     report = BattleReport(
         attacker_id=attacker.id,
         defender_id=defender.id,
@@ -430,4 +622,7 @@ async def resolve_pvp_battle(
     session.add(report)
     report._leveled_up = leveled_up  # type: ignore[attr-defined]
     report._event = event  # type: ignore[attr-defined]
+    report._territory_captured = territory_captured  # type: ignore[attr-defined]
+    report._cup_gain = cup_gain  # type: ignore[attr-defined]
+    report._cup_loss = cup_loss  # type: ignore[attr-defined]
     return report

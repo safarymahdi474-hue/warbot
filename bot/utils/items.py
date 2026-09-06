@@ -49,7 +49,7 @@ async def use_item(
     elif item.effect_type == "hp":
         user.hp = min(user.max_hp, user.hp + item.effect_value)
         msg = f"❤️ +{item.effect_value} HP گرفتی."
-    elif item.effect_type in ("attack_percent", "defense_percent"):
+    elif item.effect_type in ("attack_percent", "defense_percent", "training_speed_percent", "build_time_reduction_percent"):
         boost = ActiveBoost(
             user_id=user.id,
             boost_type=item.effect_type,
@@ -57,8 +57,13 @@ async def use_item(
             expires_at=datetime.utcnow() + timedelta(minutes=item.duration_minutes),
         )
         session.add(boost)
-        label = "حمله" if item.effect_type == "attack_percent" else "دفاع"
-        msg = f"✨ به مدت {item.duration_minutes} دقیقه {item.effect_value}٪ به {label}ات اضافه شد."
+        labels = {
+            "attack_percent": "حمله",
+            "defense_percent": "دفاع",
+            "training_speed_percent": "سرعت آموزش نیرو",
+            "build_time_reduction_percent": "سرعت ساخت‌وساز",
+        }
+        msg = f"✨ به مدت {item.duration_minutes} دقیقه {item.effect_value}٪ به {labels[item.effect_type]}ات اضافه شد."
     elif item.effect_type == "random_resources":
         gained = apply_random_resources(user)
         parts = [f"💰{gained.get('gold', 0)}"]

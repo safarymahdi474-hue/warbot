@@ -1,3 +1,4 @@
+import math
 from datetime import datetime, timedelta
 
 from bot.config import settings
@@ -14,12 +15,14 @@ from bot.database.models import (
 # آموزش/خرید نیرو
 # ---------------------------------------------------------------------------
 
-def training_cost(unit_type: UnitType, quantity: int) -> dict[str, int]:
+def training_cost(unit_type: UnitType, quantity: int, discount_percent: float = 0.0) -> dict[str, int]:
+    """discount_percent: تخفیف قابل‌تنظیم ادمین. همیشه رند به بالا (ceil) میشه."""
+    multiplier = max(0.0, 1 - discount_percent / 100)
     return {
-        "gold": unit_type.cost_gold * quantity,
-        "iron": unit_type.cost_iron * quantity,
-        "oil": unit_type.cost_oil * quantity,
-        "uranium": unit_type.cost_uranium * quantity,
+        "gold": math.ceil(unit_type.cost_gold * quantity * multiplier),
+        "iron": math.ceil(unit_type.cost_iron * quantity * multiplier),
+        "oil": math.ceil(unit_type.cost_oil * quantity * multiplier),
+        "uranium": math.ceil(unit_type.cost_uranium * quantity * multiplier),
     }
 
 
@@ -54,6 +57,7 @@ def start_training(
     unit_type: UnitType,
     quantity: int,
     training_speed_percent: float,
+    discount_percent: float = 0.0,
 ) -> TrainingOrder | str:
     """خروجی: در صورت موفقیت یک TrainingOrder (که باید session.add بشه)، وگرنه پیام خطا (str)."""
     if quantity <= 0:
@@ -61,7 +65,7 @@ def start_training(
     if user.level < unit_type.min_player_level:
         return f"برای خرید {unit_type.name_fa} باید حداقل سطح {unit_type.min_player_level} باشی."
 
-    cost = training_cost(unit_type, quantity)
+    cost = training_cost(unit_type, quantity, discount_percent)
     if not can_afford(user, cost):
         return "منابع کافی نداری. هزینه لازم: " + " + ".join(_format_cost_parts(cost))
 
@@ -166,3 +170,40 @@ def get_bonus_percent(user_researches: list[UserResearch], effect_type: str) -> 
         if ur.research_type.effect_type == effect_type and ur.level > 0:
             total += ur.research_type.effect_per_level * ur.level
     return total
+
+
+# ---------------------------------------------------------------------------
+# درمان مجروحین (به‌جای نابودی کامل، بخشی از تلفات مجروح میشن - battle.py)
+# ---------------------------------------------------------------------------
+
+def heal_cost(unit_type: UnitType, quantity: int, discount_percent: float = 0.0) -> dict[str, int]:
+    """
+    هزینه‌ی برگردوندن quantity واحد مجروح - همیشه HEAL_COST_PERCENT از
+    هزینه‌ی آموزش از صفر (بعد از تخفیف ادمین)، رند به بالا.
+    """
+    full_cost = training_cost(unit_type, quantity, discount_percent)
+    ratio = settings.HEAL_COST_PERCENT / 100
+    return {k: math.ceil(v * ratio) for k, v in full_cost.items()}
+
+
+def heal_wounded(
+    user: User, user_unit: UserUnit, unit_type: UnitType, quantity: int, discount_percent: float = 0.0
+) -> str | None:
+    """None یعنی موفق، وگرنه پیام خطا. quantity واحد مجروح رو برمی‌گردونه به quantity فعال."""
+    if quantity <= 0:
+        return "تعداد نامعتبره."
+    if user_unit.wounded_quantity < quantity:
+        return f"فقط {user_unit.wounded_quantity} واحد مجروح از این نیرو داری."
+
+    cost = heal_cost(unit_type, quantity, discount_percent)
+    if not can_afford(user, cost):
+        return "منابع کافی نداری. هزینه‌ی درمان: " + " + ".join(_format_cost_parts(cost))
+
+    user.gold -= cost["gold"]
+    user.iron -= cost["iron"]
+    user.oil -= cost["oil"]
+    user.uranium -= cost["uranium"]
+
+    user_unit.wounded_quantity -= quantity
+    user_unit.quantity += quantity
+    return None
