@@ -1,0 +1,590 @@
+from aiogram import F, Router
+from aiogram.filters import Command
+from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
+from sqlalchemy import select
+from sqlalchemy.orm import selectinload
+
+from bot.database.db import get_session
+from bot.utils.context import current_room, user_scope
+from bot.database.models import (
+    ResearchType,
+    TrainingOrder,
+    UnitType,
+    User,
+    UserResearch,
+    UserUnit,
+)
+from bot.utils.military import (
+    heal_cost,
+    heal_wounded,
+    effective_attack,
+    effective_defense,
+    finish_ready_research,
+    finish_ready_training,
+    get_bonus_percent,
+    research_cost,
+    research_duration,
+    start_research,
+    start_training,
+    training_cost,
+    training_duration,
+)
+from bot.utils.game_settings import get_unit_price_discount_percent
+from bot.utils.items import get_active_boost_percent
+from bot.utils.missions import record_progress
+from bot.utils.room_settings import deliver_sensitive_content
+
+NOT_REGISTERED_MSG = "هنوز ثبت‌نام نکردی! دستور /start رو بزن."
+
+router = Router(name="military")
+
+BUY_QUANTITIES = [1, 10, 50]
+
+# ترتیب نمایش دسته‌های اصلی و زیردسته‌ها تو منوی ارتش
+CATEGORY_GROUP_LABELS = {"ground": "🪖 نیروی زمینی", "air": "✈️ نیروی هوایی", "navy": "🚢 نیروی دریایی"}
+SUBCATEGORY_LABELS = {
+    "infantry": "🪖 پیاده‌نظام",
+    "tank": "🛡️ تانک",
+    "artillery": "💥 توپخانه",
+    "missile": "🚀 موشک",
+    "air_defense": "🛰️ پدافند هوایی",
+    "fighter": "🛩️ جنگنده",
+    "drone": "🛸 پهپاد",
+    "bomber": "💣 بمب‌افکن",
+    "navy": "🚢 دریایی",
+}
+SUBCATEGORY_ORDER = list(SUBCATEGORY_LABELS.keys())
+
+
+# ---------------------------------------------------------------------------
+# بارگذاری و همگام‌سازی
+# ---------------------------------------------------------------------------
+
+async def _backfill_missing_rows(session, user: User) -> None:
+    """اگه بعد از ثبت‌نام کاربر، نوع نیرو یا تحقیق جدیدی به کاتالوگ اضافه شده باشه، می‌سازتش."""
+    result = await session.execute(select(UnitType))
+    all_unit_types = list(result.scalars().all())
+    result = await session.execute(select(UserUnit).where(UserUnit.user_id == user.id))
+    existing_unit_type_ids = {uu.unit_type_id for uu in result.scalars().all()}
+    for ut in all_unit_types:
+        if ut.id not in existing_unit_type_ids:
+            session.add(UserUnit(user_id=user.id, unit_type_id=ut.id, quantity=0))
+
+    result = await session.execute(select(ResearchType))
+    all_research_types = list(result.scalars().all())
+    result = await session.execute(select(UserResearch).where(UserResearch.user_id == user.id))
+    existing_research_type_ids = {ur.research_type_id for ur in result.scalars().all()}
+    for rt in all_research_types:
+        if rt.id not in existing_research_type_ids:
+            session.add(UserResearch(user_id=user.id, research_type_id=rt.id, level=0))
+
+
+async def _load_state(session, telegram_id: int):
+    """کاربر + نیروها + سفارش‌های آموزش + تحقیقات رو با هم برمی‌گردونه و سینک می‌کنه."""
+    result = await session.execute(select(User).where(*user_scope(telegram_id)))
+    user = result.scalar_one_or_none()
+    if user is None:
+        return None, [], [], []
+
+    await _backfill_missing_rows(session, user)
+    await session.flush()
+
+    result = await session.execute(
+        select(UserUnit).options(selectinload(UserUnit.unit_type)).where(UserUnit.user_id == user.id)
+    )
+    user_units = list(result.scalars().all())
+
+    result = await session.execute(select(TrainingOrder).where(TrainingOrder.user_id == user.id))
+    orders = list(result.scalars().all())
+
+    result = await session.execute(
+        select(UserResearch)
+        .options(selectinload(UserResearch.research_type))
+        .where(UserResearch.user_id == user.id)
+    )
+    user_researches = list(result.scalars().all())
+
+    units_by_type = {uu.unit_type_id: uu for uu in user_units}
+    finished_orders = finish_ready_training(orders, units_by_type)
+    for order in finished_orders:
+        await session.delete(order)
+        orders.remove(order)
+
+    finish_ready_research(user_researches)
+
+    await session.commit()
+    return user, user_units, orders, user_researches
+
+
+async def _training_speed_bonus(session, user_id: int, user_researches: list[UserResearch]) -> float:
+    research_bonus = get_bonus_percent(user_researches, "training_speed_percent")
+    item_bonus = await get_active_boost_percent(session, user_id, "training_speed_percent")
+    return research_bonus + item_bonus
+
+
+def _attack_bonus(user_researches: list[UserResearch]) -> float:
+    return get_bonus_percent(user_researches, "attack_percent")
+
+
+def _defense_bonus(user_researches: list[UserResearch]) -> float:
+    return get_bonus_percent(user_researches, "defense_percent")
+
+
+# ---------------------------------------------------------------------------
+# لایه‌ی ۱: منوی اصلی ارتش - فقط دکمه‌ی دسته‌ها (بدون لیست نیرو)
+# ---------------------------------------------------------------------------
+
+def build_army_summary_text(user_units: list[UserUnit], atk_bonus: float, def_bonus: float) -> str:
+    total_attack = total_defense = 0
+    owned_units_by_subcat: dict[str, list[UserUnit]] = {}
+    for uu in user_units:
+        ut = uu.unit_type
+        if uu.quantity > 0:
+            owned_units_by_subcat.setdefault(ut.subcategory, []).append(uu)
+        atk = effective_attack(ut, atk_bonus)
+        dfn = effective_defense(ut, def_bonus)
+        total_attack += atk * uu.quantity
+        total_defense += dfn * uu.quantity
+
+    lines = [
+        "⚔️ <b>ارتش تو</b>\n",
+        f"📊 مجموع قدرت — ⚔️ حمله: {total_attack} | 🛡️ دفاع: {total_defense}\n",
+    ]
+
+    if owned_units_by_subcat:
+        lines.append("📋 <b>نیروهای من:</b>")
+        for subcat in SUBCATEGORY_ORDER:
+            rows = owned_units_by_subcat.get(subcat)
+            if not rows:
+                continue
+            rows.sort(key=lambda uu: uu.unit_type.tier)
+            for uu in rows:
+                ut = uu.unit_type
+                lines.append(f"  {ut.icon} {ut.name_fa}: <b>{uu.quantity}</b> عدد")
+        lines.append("")
+
+    lines.append("یه دسته رو انتخاب کن تا نیروهاش رو ببینی:")
+    return "\n".join(lines)
+
+
+def army_categories_keyboard(user: User, user_units: list[UserUnit]) -> InlineKeyboardMarkup:
+    """هر دسته یه دکمه‌ست. اگه هیچ نیرویی تو یه دسته باز نشده باشه، دکمه‌ش قفل نشون داده میشه."""
+    unlocked_by_subcat: dict[str, bool] = {}
+    for uu in user_units:
+        ut = uu.unit_type
+        if user.level >= ut.min_player_level:
+            unlocked_by_subcat[ut.subcategory] = True
+        else:
+            unlocked_by_subcat.setdefault(ut.subcategory, False)
+
+    rows = []
+    row = []
+    for subcat in SUBCATEGORY_ORDER:
+        if subcat not in unlocked_by_subcat:
+            continue
+        label = SUBCATEGORY_LABELS[subcat]
+        if not unlocked_by_subcat[subcat]:
+            label = f"🔒 {label}"
+        row.append(InlineKeyboardButton(text=label, callback_data=f"army_cat:{subcat}"))
+        if len(row) == 2:
+            rows.append(row)
+            row = []
+    if row:
+        rows.append(row)
+
+    rows.append([InlineKeyboardButton(text="🔬 تحقیق و توسعه", callback_data="show_research")])
+    rows.append([InlineKeyboardButton(text="🔄 بروزرسانی", callback_data="show_army")])
+    rows.append([InlineKeyboardButton(text="🔙 منوی اصلی", callback_data="show_main_menu")])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+async def _army_view(telegram_id: int):
+    async with get_session() as session:
+        user, user_units, orders, user_researches = await _load_state(session, telegram_id)
+        if user is None:
+            return NOT_REGISTERED_MSG, None
+        atk_bonus = _attack_bonus(user_researches)
+        def_bonus = _defense_bonus(user_researches)
+        text = build_army_summary_text(user_units, atk_bonus, def_bonus)
+        return text, army_categories_keyboard(user, user_units)
+
+
+@router.message(Command("army"))
+async def cmd_army(message: Message) -> None:
+    text, keyboard = await _army_view(message.from_user.id)
+    if text == NOT_REGISTERED_MSG:
+        await message.answer(text)
+        return
+
+    sent_privately, group_note = await deliver_sensitive_content(
+        message.bot, current_room(), message.chat.type, message.from_user.id, text, keyboard
+    )
+    if sent_privately:
+        await message.answer(group_note)
+        return
+    await message.answer(text, reply_markup=keyboard, parse_mode="HTML")
+
+
+@router.callback_query(F.data == "show_army")
+async def cb_army(callback: CallbackQuery) -> None:
+    text, keyboard = await _army_view(callback.from_user.id)
+    if text == NOT_REGISTERED_MSG:
+        await callback.answer(text, show_alert=True)
+        return
+
+    sent_privately, group_note = await deliver_sensitive_content(
+        callback.bot, current_room(), callback.message.chat.type, callback.from_user.id, text, keyboard
+    )
+    if sent_privately:
+        await callback.answer(group_note, show_alert=True)
+        return
+
+    try:
+        await callback.message.edit_text(text, reply_markup=keyboard, parse_mode="HTML")
+    except Exception:
+        await callback.message.answer(text, reply_markup=keyboard, parse_mode="HTML")
+    await callback.answer()
+
+
+# ---------------------------------------------------------------------------
+# لایه‌ی ۲: نیروهای داخل یک دسته (با زدن دکمه‌ی دسته باز میشه)
+# ---------------------------------------------------------------------------
+
+def build_category_text(subcat: str, user: User, user_units: list[UserUnit], orders: list[TrainingOrder]) -> str:
+    label = SUBCATEGORY_LABELS.get(subcat, subcat)
+    lines = [f"{label}\n"]
+
+    pending_by_type: dict[int, int] = {}
+    for o in orders:
+        pending_by_type[o.unit_type_id] = pending_by_type.get(o.unit_type_id, 0) + o.quantity
+
+    rows = [uu for uu in user_units if uu.unit_type.subcategory == subcat]
+    rows.sort(key=lambda uu: uu.unit_type.tier)
+
+    if not rows:
+        lines.append("هیچ نیرویی تو این دسته پیدا نشد.")
+        return "\n".join(lines)
+
+    for uu in rows:
+        ut = uu.unit_type
+        if user.level < ut.min_player_level:
+            lines.append(f"🔒 {ut.icon} {ut.name_fa} — نیاز به سطح {ut.min_player_level}")
+            continue
+        pending = pending_by_type.get(ut.id, 0)
+        pending_txt = f" (⏳ +{pending})" if pending else ""
+        lines.append(f"{ut.icon} <b>{ut.name_fa}</b>: {uu.quantity} عدد{pending_txt}")
+
+    return "\n".join(lines)
+
+
+def category_units_keyboard(subcat: str, user: User, user_units: list[UserUnit]) -> InlineKeyboardMarkup:
+    rows = []
+    unlocked = [
+        uu for uu in user_units
+        if uu.unit_type.subcategory == subcat and user.level >= uu.unit_type.min_player_level
+    ]
+    unlocked.sort(key=lambda uu: uu.unit_type.tier)
+
+    row = []
+    for uu in unlocked:
+        ut = uu.unit_type
+        row.append(InlineKeyboardButton(text=f"{ut.icon} {ut.name_fa}", callback_data=f"unit_menu:{ut.id}"))
+        if len(row) == 2:
+            rows.append(row)
+            row = []
+    if row:
+        rows.append(row)
+
+    rows.append([InlineKeyboardButton(text="🔙 بازگشت به دسته‌ها", callback_data="show_army")])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+@router.callback_query(F.data.startswith("army_cat:"))
+async def cb_army_category(callback: CallbackQuery) -> None:
+    subcat = callback.data.split(":")[1]
+
+    async with get_session() as session:
+        user, user_units, orders, user_researches = await _load_state(session, callback.from_user.id)
+        if user is None:
+            await callback.answer(NOT_REGISTERED_MSG, show_alert=True)
+            return
+
+        text = build_category_text(subcat, user, user_units, orders)
+        keyboard = category_units_keyboard(subcat, user, user_units)
+
+    sent_privately, group_note = await deliver_sensitive_content(
+        callback.bot, current_room(), callback.message.chat.type, callback.from_user.id, text, keyboard
+    )
+    if sent_privately:
+        await callback.answer(group_note, show_alert=True)
+        return
+
+    try:
+        await callback.message.edit_text(text, reply_markup=keyboard, parse_mode="HTML")
+    except Exception:
+        await callback.message.answer(text, reply_markup=keyboard, parse_mode="HTML")
+    await callback.answer()
+
+
+# ---------------------------------------------------------------------------
+# لایه‌ی ۳: جزئیات + خرید یک نوع نیرو خاص
+# ---------------------------------------------------------------------------
+
+def unit_detail_keyboard(unit_type_id: int, subcat: str, wounded_quantity: int = 0) -> InlineKeyboardMarkup:
+    rows = [
+        [
+            InlineKeyboardButton(text=f"🛒 خرید {q}", callback_data=f"buy_unit:{unit_type_id}:{q}")
+            for q in BUY_QUANTITIES
+        ],
+    ]
+    if wounded_quantity > 0:
+        rows.append(
+            [InlineKeyboardButton(text=f"🩹 درمان مجروحین ({wounded_quantity})", callback_data=f"heal_unit:{unit_type_id}")]
+        )
+    rows.append([InlineKeyboardButton(text="🔙 بازگشت به این دسته", callback_data=f"army_cat:{subcat}")])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def build_unit_detail_text(uu: UserUnit, speed_bonus: float, atk_bonus: float, def_bonus: float, discount_percent: float = 0.0) -> str:
+    ut = uu.unit_type
+    atk = effective_attack(ut, atk_bonus)
+    dfn = effective_defense(ut, def_bonus)
+
+    lines = [
+        f"{ut.icon} <b>{ut.name_fa}</b>",
+        f"تعداد فعلی: {uu.quantity}"
+        + (f" | 🩹 مجروح: {uu.wounded_quantity}" if uu.wounded_quantity else ""),
+        f"⚔️ حمله (هر واحد): {atk}  🛡️ دفاع (هر واحد): {dfn}\n",
+        "💰 هزینه هر واحد:",
+        f"  {ut.cost_gold} طلا"
+        + (f" + {ut.cost_iron} آهن" if ut.cost_iron else "")
+        + (f" + {ut.cost_oil} نفت" if ut.cost_oil else "")
+        + (f" + {ut.cost_uranium} اورانیوم" if ut.cost_uranium else ""),
+    ]
+    if discount_percent:
+        lines.append(f"🏷️ تخفیف فعلی ادمین: {discount_percent:.0f}٪")
+
+    for q in BUY_QUANTITIES:
+        cost = training_cost(ut, q, discount_percent)
+        duration = training_duration(ut, q, speed_bonus)
+        minutes = max(1, int(duration.total_seconds() // 60))
+        lines.append(f"  خرید {q} عدد → {minutes} دقیقه زمان آموزش")
+
+    return "\n".join(lines)
+
+
+@router.callback_query(F.data.startswith("unit_menu:"))
+async def cb_unit_menu(callback: CallbackQuery) -> None:
+    unit_type_id = int(callback.data.split(":")[1])
+    async with get_session() as session:
+        user, user_units, orders, user_researches = await _load_state(session, callback.from_user.id)
+        if user is None:
+            await callback.answer("هنوز ثبت‌نام نکردی!", show_alert=True)
+            return
+        uu = next((u for u in user_units if u.unit_type_id == unit_type_id), None)
+        if uu is None:
+            await callback.answer("این نیرو پیدا نشد.", show_alert=True)
+            return
+        if user.level < uu.unit_type.min_player_level:
+            await callback.answer(f"این نیرو نیاز به سطح {uu.unit_type.min_player_level} داره.", show_alert=True)
+            return
+
+        subcat = uu.unit_type.subcategory
+        discount_percent = await get_unit_price_discount_percent(session)
+        speed_bonus = await _training_speed_bonus(session, user.id, user_researches)
+        text = build_unit_detail_text(
+            uu, speed_bonus, _attack_bonus(user_researches), _defense_bonus(user_researches), discount_percent
+        )
+
+    try:
+        await callback.message.edit_text(text, reply_markup=unit_detail_keyboard(unit_type_id, subcat, uu.wounded_quantity), parse_mode="HTML")
+    except Exception:
+        await callback.message.answer(text, reply_markup=unit_detail_keyboard(unit_type_id, subcat, uu.wounded_quantity), parse_mode="HTML")
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("buy_unit:"))
+async def cb_buy_unit(callback: CallbackQuery) -> None:
+    _, unit_type_id_str, qty_str = callback.data.split(":")
+    unit_type_id, qty = int(unit_type_id_str), int(qty_str)
+
+    async with get_session() as session:
+        user, user_units, orders, user_researches = await _load_state(session, callback.from_user.id)
+        if user is None:
+            await callback.answer("هنوز ثبت‌نام نکردی!", show_alert=True)
+            return
+
+        result = await session.execute(select(UnitType).where(UnitType.id == unit_type_id))
+        unit_type = result.scalar_one_or_none()
+        if unit_type is None:
+            await callback.answer("این نیرو پیدا نشد.", show_alert=True)
+            return
+
+        speed_bonus = await _training_speed_bonus(session, user.id, user_researches)
+        discount_percent = await get_unit_price_discount_percent(session)
+        result = start_training(user, unit_type, qty, speed_bonus, discount_percent)
+
+        if isinstance(result, str):
+            await callback.answer(result, show_alert=True)
+            return
+
+        session.add(result)
+        await record_progress(session, user, "train_units", qty)
+        await session.commit()
+
+        subcat = unit_type.subcategory
+        await callback.answer(f"✅ آموزش {qty} {unit_type.name_fa} شروع شد!", show_alert=True)
+
+    async with get_session() as session:
+        user, user_units, orders, user_researches = await _load_state(session, callback.from_user.id)
+        text = build_category_text(subcat, user, user_units, orders)
+        keyboard = category_units_keyboard(subcat, user, user_units)
+
+    try:
+        await callback.message.edit_text(text, reply_markup=keyboard, parse_mode="HTML")
+    except Exception:
+        await callback.message.answer(text, reply_markup=keyboard, parse_mode="HTML")
+
+
+@router.callback_query(F.data.startswith("heal_unit:"))
+async def cb_heal_unit(callback: CallbackQuery) -> None:
+    unit_type_id = int(callback.data.split(":")[1])
+
+    async with get_session() as session:
+        user, user_units, orders, user_researches = await _load_state(session, callback.from_user.id)
+        if user is None:
+            await callback.answer("هنوز ثبت‌نام نکردی!", show_alert=True)
+            return
+
+        uu = next((u for u in user_units if u.unit_type_id == unit_type_id), None)
+        if uu is None or uu.wounded_quantity <= 0:
+            await callback.answer("مجروحی از این نیرو نداری.", show_alert=True)
+            return
+
+        discount_percent = await get_unit_price_discount_percent(session)
+        qty = uu.wounded_quantity  # همه‌ی مجروحین رو یه‌جا درمان می‌کنه
+        error = heal_wounded(user, uu, uu.unit_type, qty, discount_percent)
+        if error:
+            await callback.answer(error, show_alert=True)
+            return
+
+        await session.commit()
+        subcat = uu.unit_type.subcategory
+        await callback.answer(f"✅ {qty} واحد {uu.unit_type.name_fa} درمان و به ارتش برگشتن!", show_alert=True)
+
+    text, keyboard = await _army_view(callback.from_user.id)
+    async with get_session() as session:
+        user, user_units, orders, user_researches = await _load_state(session, callback.from_user.id)
+        cat_text = build_category_text(subcat, user, user_units, orders)
+        cat_keyboard = category_units_keyboard(subcat, user, user_units)
+
+    try:
+        await callback.message.edit_text(cat_text, reply_markup=cat_keyboard, parse_mode="HTML")
+    except Exception:
+        await callback.message.answer(cat_text, reply_markup=cat_keyboard, parse_mode="HTML")
+
+
+# ---------------------------------------------------------------------------
+# تحقیق و توسعه
+# ---------------------------------------------------------------------------
+
+def research_keyboard(user_researches: list[UserResearch]) -> InlineKeyboardMarkup:
+    rows = []
+    for ur in sorted(user_researches, key=lambda x: x.research_type.id):
+        rt = ur.research_type
+        if ur.upgrade_finish_at is not None:
+            label = f"{rt.icon} {rt.name_fa} ⏳ در حال تحقیق..."
+            rows.append([InlineKeyboardButton(text=label, callback_data="research_busy")])
+        elif ur.level >= rt.max_level:
+            label = f"{rt.icon} {rt.name_fa} (لول {ur.level} - MAX)"
+            rows.append([InlineKeyboardButton(text=label, callback_data="research_max")])
+        else:
+            label = f"{rt.icon} {rt.name_fa} (لول {ur.level} → {ur.level + 1})"
+            rows.append([InlineKeyboardButton(text=label, callback_data=f"do_research:{rt.id}")])
+    rows.append([InlineKeyboardButton(text="🔙 بازگشت به ارتش", callback_data="show_army")])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def build_research_text(user_researches: list[UserResearch]) -> str:
+    lines = ["🔬 <b>تحقیق و توسعه</b>\n(بونوس‌ها روی کل ارتش اثر می‌ذارن)\n"]
+    for ur in sorted(user_researches, key=lambda x: x.research_type.id):
+        rt = ur.research_type
+        current_bonus = rt.effect_per_level * ur.level
+        status = f"لول {ur.level}/{rt.max_level} — بونوس فعلی: +{current_bonus:.0f}٪"
+        if ur.upgrade_finish_at is not None:
+            status += " (⏳ در حال تحقیق)"
+        elif ur.level < rt.max_level:
+            cost = research_cost(rt, ur.level)
+            duration = research_duration(rt, ur.level)
+            minutes = max(1, int(duration.total_seconds() // 60))
+            parts = [f"{cost['gold']} طلا"]
+            if cost["iron"]:
+                parts.append(f"{cost['iron']} آهن")
+            if cost["oil"]:
+                parts.append(f"{cost['oil']} نفت")
+            status += f"\n   ارتقای بعدی: {' + '.join(parts)} — {minutes} دقیقه"
+        lines.append(f"{rt.icon} <b>{rt.name_fa}</b>: {status}")
+    return "\n\n".join(lines)
+
+
+async def _research_view(telegram_id: int):
+    async with get_session() as session:
+        user, user_units, orders, user_researches = await _load_state(session, telegram_id)
+        if user is None:
+            return NOT_REGISTERED_MSG, None
+        return build_research_text(user_researches), research_keyboard(user_researches)
+
+
+@router.message(Command("research"))
+async def cmd_research(message: Message) -> None:
+    text, keyboard = await _research_view(message.from_user.id)
+    await message.answer(text, reply_markup=keyboard, parse_mode="HTML")
+
+
+@router.callback_query(F.data == "show_research")
+async def cb_research(callback: CallbackQuery) -> None:
+    text, keyboard = await _research_view(callback.from_user.id)
+    try:
+        await callback.message.edit_text(text, reply_markup=keyboard, parse_mode="HTML")
+    except Exception:
+        await callback.message.answer(text, reply_markup=keyboard, parse_mode="HTML")
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("do_research:"))
+async def cb_do_research(callback: CallbackQuery) -> None:
+    research_type_id = int(callback.data.split(":")[1])
+
+    async with get_session() as session:
+        user, user_units, orders, user_researches = await _load_state(session, callback.from_user.id)
+        if user is None:
+            await callback.answer("هنوز ثبت‌نام نکردی!", show_alert=True)
+            return
+
+        ur = next((r for r in user_researches if r.research_type_id == research_type_id), None)
+        if ur is None:
+            await callback.answer("این تحقیق پیدا نشد.", show_alert=True)
+            return
+
+        error = start_research(user, ur, ur.research_type)
+        if error:
+            await callback.answer(error, show_alert=True)
+            return
+
+        await record_progress(session, user, "research_upgrade", 1)
+        await session.commit()
+        await callback.answer("✅ تحقیق شروع شد!", show_alert=True)
+
+    text, keyboard = await _research_view(callback.from_user.id)
+    try:
+        await callback.message.edit_text(text, reply_markup=keyboard, parse_mode="HTML")
+    except Exception:
+        await callback.message.answer(text, reply_markup=keyboard, parse_mode="HTML")
+
+
+@router.callback_query(F.data.in_({"research_busy", "research_max"}))
+async def cb_research_noop(callback: CallbackQuery) -> None:
+    if callback.data == "research_busy":
+        await callback.answer("این تحقیق الان در حال انجامه، صبر کن.", show_alert=True)
+    else:
+        await callback.answer("این تحقیق به حداکثر سطح رسیده.", show_alert=True)
