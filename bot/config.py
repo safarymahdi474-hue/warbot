@@ -19,6 +19,11 @@ class Settings:
     XP_BASE_TO_NEXT_LEVEL: int = 100  # XP لازم برای لول ۲
     XP_GROWTH_FACTOR: float = 1.35  # هر لول چقدر سخت‌تر بشه
 
+    # --- لقب/اسم کشور (موقع ثبت‌نام انتخاب میشه) ---
+    COUNTRY_TITLE_MIN_LENGTH: int = 2
+    COUNTRY_TITLE_MAX_LENGTH: int = 30
+    NATION_MILITARY_BONUS_PERCENT: float = 0.0  # بونوس نظامی ثابت و یکسان برای همه (چون دیگه به کشور خاصی وابسته نیست)
+
     # --- منابع و ساختمان (فاز ۲) ---
     BASE_RESOURCE_STORAGE: int = 1000  # سقف اولیه‌ی هر منبع (نفت/آهن/غذا) قبل از ساخت انبار
     BASE_URANIUM_STORAGE: int = 200  # اورانیوم کمیابه، سقفش خیلی کوچیک‌تره
