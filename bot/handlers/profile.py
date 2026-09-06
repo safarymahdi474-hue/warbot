@@ -32,8 +32,11 @@ def profile_keyboard() -> InlineKeyboardMarkup:
 
 
 def build_profile_text(user: User) -> str:
+    from bot.utils.league import get_league
+
     xp_needed = xp_required_for_level(user.level)
     title_text = user.country_title or "بدون لقب"
+    league = get_league(user.league_cup)
     room_line = (
         f"🏠 فضای بازی: {user.room.title}\n" if user.room_id is not None else "🏠 فضای بازی: پروفایل اصلی\n"
     )
@@ -41,6 +44,8 @@ def build_profile_text(user: User) -> str:
         room_line +
         f"👤 <b>{user.nickname}</b>\n"
         f"🏳️ لقب/کشور: {title_text}\n"
+        f"{league['icon']} لیگ: {league['name_fa']} (🏆 {user.league_cup} کاپ)\n"
+        f"🗺️ خاک: {user.territory_count}\n"
         f"⭐ سطح: {user.level}\n\n"
         f"XP: {user.xp}/{xp_needed}\n{make_bar(user.xp, xp_needed)}\n\n"
         f"❤️ جان: {user.hp}/{user.max_hp}\n{make_bar(user.hp, user.max_hp)}\n\n"

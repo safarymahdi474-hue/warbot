@@ -24,7 +24,12 @@ from bot.database.models import (
     UserUnit,
 )
 from bot.keyboards.menus import main_menu_keyboard
-from bot.utils.force_join import FORCE_JOIN_TEXT, build_force_join_keyboard, get_unjoined_channels
+from bot.utils.force_join import (
+    FORCE_JOIN_TEXT,
+    build_force_join_keyboard,
+    get_unjoined_channels,
+    has_any_force_join_channels,
+)
 from aiogram.types import CallbackQuery
 
 router = Router(name="start")
@@ -108,15 +113,21 @@ async def cmd_start(message: Message, state: FSMContext, command: CommandObject)
     referral_code_used = command.args
     await state.update_data(referred_by_code=referral_code_used)
 
-    # اگه عضویت اجباری فعال باشه (FORCE_JOIN_CHANNELS در .env پر شده باشه)،
+    # اگه عضویت اجباری فعال باشه (از .env یا از پنل ادمین اضافه شده باشه)،
     # اول باید عضویت رو چک کنیم و قبل از هر چیز نشونش بدیم.
-    if settings.force_join_channels:
-        unjoined = await get_unjoined_channels(message.bot, message.from_user.id)
-        if unjoined:
-            keyboard = await build_force_join_keyboard(message.bot, unjoined)
-            await message.answer(FORCE_JOIN_TEXT, reply_markup=keyboard, parse_mode="HTML")
-            await state.set_state(Registration.waiting_for_force_join)
-            return
+    async with get_session() as session:
+        force_join_active = await has_any_force_join_channels(session)
+        if force_join_active:
+            unjoined = await get_unjoined_channels(message.bot, session, message.from_user.id)
+        else:
+            unjoined = []
+        await session.commit()
+
+    if unjoined:
+        keyboard = await build_force_join_keyboard(message.bot, unjoined)
+        await message.answer(FORCE_JOIN_TEXT, reply_markup=keyboard, parse_mode="HTML")
+        await state.set_state(Registration.waiting_for_force_join)
+        return
 
     await message.answer(_nickname_intro_text(message.chat.type), parse_mode="HTML")
     await state.set_state(Registration.waiting_for_nickname)
@@ -124,7 +135,9 @@ async def cmd_start(message: Message, state: FSMContext, command: CommandObject)
 
 @router.callback_query(Registration.waiting_for_force_join, F.data == "check_force_join")
 async def cb_check_force_join(callback: CallbackQuery, state: FSMContext) -> None:
-    unjoined = await get_unjoined_channels(callback.bot, callback.from_user.id)
+    async with get_session() as session:
+        unjoined = await get_unjoined_channels(callback.bot, session, callback.from_user.id)
+        await session.commit()
 
     if unjoined:
         await callback.answer("هنوز توی همه‌ی کانال‌ها عضو نشدی! بعد از عضویت دوباره بزن.", show_alert=True)
@@ -211,6 +224,7 @@ async def process_country_title(message: Message, state: FSMContext) -> None:
             xp=0,
             referral_code=generate_referral_code(),
             referred_by_id=referred_by_id,
+            territory_count=settings.STARTING_TERRITORY_COUNT,
         )
         session.add(new_user)
 

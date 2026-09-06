@@ -1,4 +1,7 @@
-from aiogram import F, Router
+import asyncio
+from datetime import datetime, timedelta
+
+from aiogram import Bot, F, Router
 from aiogram.filters import Command
 from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
 from sqlalchemy import func, or_, select
@@ -6,8 +9,8 @@ from sqlalchemy.orm import selectinload
 
 from bot.config import settings
 from bot.database.db import get_session
-from bot.utils.context import current_room, room_condition, user_scope
-from bot.database.models import BannedTelegramUser, BattleReport, User
+from bot.utils.context import current_room, current_room_id, room_condition, user_scope
+from bot.database.models import BannedTelegramUser, BattleReport, PendingExpedition, User, UserUnit
 from bot.utils.alliance import add_war_score, get_active_war_between
 from bot.utils.battle import (
     ATTACK_STRATEGIES,
@@ -16,6 +19,8 @@ from bot.utils.battle import (
     resolve_bot_battle,
     resolve_pvp_battle,
 )
+from bot.utils.expedition import compute_sent_units, compute_travel_minutes
+from bot.utils.league import get_league
 from bot.utils.missions import record_progress
 from bot.utils.progression import regen_energy
 from bot.utils.pvp_season import (
@@ -42,6 +47,7 @@ def attack_menu_keyboard() -> InlineKeyboardMarkup:
             [InlineKeyboardButton(text="👥 نبرد PvP", callback_data="attack_pvp_menu")],
             [InlineKeyboardButton(text="📅 رتبه‌بندی هفتگی PvP", callback_data="show_pvp_season")],
             [InlineKeyboardButton(text="📜 گزارش‌های اخیر", callback_data="show_reports")],
+            [InlineKeyboardButton(text="🔙 منوی اصلی", callback_data="show_main_menu")],
         ]
     )
 
@@ -104,6 +110,30 @@ def bot_difficulty_keyboard(strategy_key: str) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
+def expedition_percent_keyboard(launch_prefix: str) -> InlineKeyboardMarkup:
+    """launch_prefix مثلا 'launch_bot:hard:balanced' یا 'launch_pvp:123:damage'."""
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(text="۲۵٪ نیرو", callback_data=f"{launch_prefix}:25"),
+                InlineKeyboardButton(text="۵۰٪ نیرو", callback_data=f"{launch_prefix}:50"),
+            ],
+            [
+                InlineKeyboardButton(text="۷۵٪ نیرو", callback_data=f"{launch_prefix}:75"),
+                InlineKeyboardButton(text="💯 تمام قوا", callback_data=f"{launch_prefix}:100"),
+            ],
+            [InlineKeyboardButton(text="🔙 بازگشت", callback_data="show_attack_menu")],
+        ]
+    )
+
+
+async def _load_units_for_expedition(session, user_id: int) -> list[UserUnit]:
+    result = await session.execute(
+        select(UserUnit).options(selectinload(UserUnit.unit_type)).where(UserUnit.user_id == user_id)
+    )
+    return list(result.scalars().all())
+
+
 @router.callback_query(F.data == "attack_bot_menu")
 async def cb_attack_bot_menu(callback: CallbackQuery) -> None:
     await callback.message.edit_text(
@@ -124,7 +154,20 @@ async def cb_attack_bot_strategy(callback: CallbackQuery) -> None:
 
 @router.callback_query(F.data.startswith("attack_bot:"))
 async def cb_attack_bot(callback: CallbackQuery) -> None:
+    """بعد از انتخاب سختی، حالا باید درصد نیروی اعزامی رو انتخاب کنه."""
     _, difficulty, strategy_key = callback.data.split(":")
+    await callback.message.edit_text(
+        "🪖 چند درصد از نیروهات رو اعزام می‌کنی؟\n"
+        "(هرچی نیروی بیشتری بفرستی، ممکنه دیرتر برسه)",
+        reply_markup=expedition_percent_keyboard(f"launch_bot:{difficulty}:{strategy_key}"),
+    )
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("launch_bot:"))
+async def cb_launch_bot_expedition(callback: CallbackQuery) -> None:
+    _, difficulty, strategy_key, percent_str = callback.data.split(":")
+    percent = int(percent_str)
 
     async with get_session() as session:
         result = await session.execute(select(User).where(*user_scope(callback.from_user.id)))
@@ -140,16 +183,37 @@ async def cb_attack_bot(callback: CallbackQuery) -> None:
             await session.commit()
             return
 
-        report = await resolve_bot_battle(session, attacker, difficulty, strategy_key)
-        leveled_up = getattr(report, "_leveled_up", [])
-        await record_progress(session, attacker, "bot_battle", 1)
-        if report.winner == "attacker":
-            await record_progress(session, attacker, "battle_win", 1)
+        user_units = await _load_units_for_expedition(session, attacker.id)
+        sent_units = compute_sent_units(user_units, attacker.level, percent)
+        if not sent_units:
+            await callback.answer("هیچ نیروی آماده‌ای برای اعزام نداری!", show_alert=True)
+            return
+
+        attacker.energy -= settings.ATTACK_ENERGY_COST
+
+        travel_minutes = compute_travel_minutes(user_units, sent_units)
+        expedition = PendingExpedition(
+            attacker_id=attacker.id,
+            defender_id=None,
+            is_pvp=False,
+            difficulty=difficulty,
+            strategy_key=strategy_key,
+            sent_units={str(k): v for k, v in sent_units.items()},
+            room_id=current_room(),
+            chat_id=callback.message.chat.id,
+            attacker_telegram_id=callback.from_user.id,
+            arrival_at=datetime.utcnow() + timedelta(minutes=travel_minutes),
+        )
+        session.add(expedition)
         await session.commit()
+        expedition_id = expedition.id
 
-        text = build_bot_report_text(report, leveled_up, attacker.hp, attacker.max_hp)
+    asyncio.create_task(_schedule_expedition_resolve(callback.bot, expedition_id, travel_minutes * 60))
 
-    await callback.message.edit_text(text, reply_markup=bot_difficulty_keyboard(strategy_key), parse_mode="HTML")
+    await callback.message.edit_text(
+        f"🛫 نیروهات اعزام شدن!\n⏳ تا حدود {travel_minutes} دقیقه‌ی دیگه نتیجه‌ی نبرد اعلام میشه.",
+        reply_markup=attack_menu_keyboard(),
+    )
     await callback.answer()
 
 
@@ -169,7 +233,7 @@ def build_bot_report_text(
         power_bar(report.attacker_power, report.defender_power),
         f"❤️ HP: {attacker_hp}/{attacker_max_hp} (-{report.attacker_hp_lost})",
         hp_bar(attacker_hp, attacker_max_hp),
-        f"💀 نیروی از دست رفته: {report.attacker_units_lost}",
+        f"💀 تلفات نیرو (کشته+مجروح): {report.attacker_units_lost}",
         f"💰 طلای بدست‌اومده: {report.loot_gold}",
         f"⭐ XP: +{report.xp_gained}",
     ]
@@ -183,6 +247,8 @@ def build_bot_report_text(
 # ---------------------------------------------------------------------------
 
 async def _find_pvp_targets(session, attacker: User) -> list[User]:
+    from bot.utils.league import can_fight
+
     low = attacker.level - settings.PVP_LEVEL_RANGE
     high = attacker.level + settings.PVP_LEVEL_RANGE
     banned_subquery = select(BannedTelegramUser.telegram_id)
@@ -195,18 +261,21 @@ async def _find_pvp_targets(session, attacker: User) -> list[User]:
             User.telegram_id.not_in(banned_subquery),
         )
         .order_by(func.random())
-        .limit(settings.PVP_TARGETS_SHOWN)
+        .limit(settings.PVP_TARGETS_SHOWN * 5)
     )
-    return list(result.scalars().all())
+    candidates = list(result.scalars().all())
+    matched = [u for u in candidates if can_fight(attacker, u)]
+    return matched[: settings.PVP_TARGETS_SHOWN]
 
 
 def pvp_targets_keyboard(targets: list[User], strategy_key: str) -> InlineKeyboardMarkup:
     rows = []
     for t in targets:
+        league = get_league(t.league_cup)
         rows.append(
             [
                 InlineKeyboardButton(
-                    text=f"⚔️ {t.nickname} (لول {t.level})",
+                    text=f"⚔️ {t.nickname} (لول {t.level} | {league['icon']} {league['name_fa']})",
                     callback_data=f"attack_pvp:{t.id}:{strategy_key}",
                 ),
                 InlineKeyboardButton(
@@ -305,8 +374,50 @@ async def cb_spy_pvp(callback: CallbackQuery) -> None:
 
 @router.callback_query(F.data.startswith("attack_pvp:"))
 async def cb_attack_pvp(callback: CallbackQuery) -> None:
+    """بعد از انتخاب هدف، حالا باید درصد نیروی اعزامی رو انتخاب کنه."""
     _, defender_id_str, strategy_key = callback.data.split(":")
+
+    async with get_session() as session:
+        result = await session.execute(select(User).where(*user_scope(callback.from_user.id)))
+        attacker = result.scalar_one_or_none()
+        if attacker is None:
+            await callback.answer("هنوز ثبت‌نام نکردی!", show_alert=True)
+            return
+
+        regen_energy(attacker)
+        error = can_attack(attacker)
+        if error:
+            await callback.answer(error, show_alert=True)
+            await session.commit()
+            return
+
+        defender = await session.get(User, int(defender_id_str))
+        if defender is None:
+            await callback.answer("این بازیکن دیگه در دسترس نیست.", show_alert=True)
+            return
+        if defender.room_id != current_room():
+            await callback.answer("این بازیکن مال این گروه/چت نیست.", show_alert=True)
+            return
+
+        from bot.utils.league import can_fight
+
+        if not can_fight(attacker, defender):
+            await callback.answer("این بازیکن دیگه هم‌لیگ تو نیست (لیگش عوض شده).", show_alert=True)
+            return
+
+    await callback.message.edit_text(
+        "🪖 چند درصد از نیروهات رو اعزام می‌کنی؟\n"
+        "(هرچی نیروی بیشتری بفرستی، ممکنه دیرتر برسه)",
+        reply_markup=expedition_percent_keyboard(f"launch_pvp:{defender_id_str}:{strategy_key}"),
+    )
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("launch_pvp:"))
+async def cb_launch_pvp_expedition(callback: CallbackQuery) -> None:
+    _, defender_id_str, strategy_key, percent_str = callback.data.split(":")
     defender_id = int(defender_id_str)
+    percent = int(percent_str)
 
     async with get_session() as session:
         result = await session.execute(select(User).where(*user_scope(callback.from_user.id)))
@@ -323,60 +434,39 @@ async def cb_attack_pvp(callback: CallbackQuery) -> None:
             return
 
         defender = await session.get(User, defender_id)
-        if defender is None:
+        if defender is None or defender.room_id != current_room():
             await callback.answer("این بازیکن دیگه در دسترس نیست.", show_alert=True)
             return
-        if defender.room_id != current_room():
-            await callback.answer("این بازیکن مال این گروه/چت نیست.", show_alert=True)
+
+        user_units = await _load_units_for_expedition(session, attacker.id)
+        sent_units = compute_sent_units(user_units, attacker.level, percent)
+        if not sent_units:
+            await callback.answer("هیچ نیروی آماده‌ای برای اعزام نداری!", show_alert=True)
             return
 
-        report = await resolve_pvp_battle(session, attacker, defender, strategy_key)
-        leveled_up = getattr(report, "_leveled_up", [])
-        defender_nickname = defender.nickname
-        await record_progress(session, attacker, "pvp_battle", 1)
-        if report.winner == "attacker":
-            await record_progress(session, attacker, "battle_win", 1)
-            await record_pvp_win(session, attacker)
+        attacker.energy -= settings.ATTACK_ENERGY_COST
 
-        # اگه هر دو عضو اتحادن و اتحادهاشون در جنگن، امتیاز جنگ به برنده اضافه میشه
-        war_note = ""
-        if attacker.alliance_id and defender.alliance_id and attacker.alliance_id != defender.alliance_id:
-            war = await get_active_war_between(session, attacker.alliance_id, defender.alliance_id)
-            if war is not None:
-                winner_alliance_id = attacker.alliance_id if report.winner == "attacker" else defender.alliance_id
-                await add_war_score(session, war, winner_alliance_id, report.attacker_power)
-                war_note = "\n\n⚔️ این نبرد به امتیاز جنگ اتحادتون اضافه شد!"
-
+        travel_minutes = compute_travel_minutes(user_units, sent_units)
+        expedition = PendingExpedition(
+            attacker_id=attacker.id,
+            defender_id=defender.id,
+            is_pvp=True,
+            strategy_key=strategy_key,
+            sent_units={str(k): v for k, v in sent_units.items()},
+            room_id=current_room(),
+            chat_id=callback.message.chat.id,
+            attacker_telegram_id=callback.from_user.id,
+            arrival_at=datetime.utcnow() + timedelta(minutes=travel_minutes),
+        )
+        session.add(expedition)
         await session.commit()
+        expedition_id = expedition.id
 
-        text = build_pvp_report_text(
-            report, defender_nickname, leveled_up, attacker.hp, attacker.max_hp, defender.hp, defender.max_hp
-        ) + war_note
+    asyncio.create_task(_schedule_expedition_resolve(callback.bot, expedition_id, travel_minutes * 60))
 
-        defender_notify = defender.notifications_enabled
-        defender_telegram_id = defender.telegram_id
-        attacker_nickname = attacker.nickname
-        defender_won = report.winner == "defender"
-
-    if defender_notify:
-        if defender_won:
-            outcome_msg = f"⚔️ <b>{attacker_nickname}</b> بهت حمله کرد ولی دفعش کردی! 🛡️"
-        else:
-            outcome_msg = f"⚔️ <b>{attacker_nickname}</b> بهت حمله کرد و شکستت داد و غارتت کرد! 😡"
-        try:
-            await callback.bot.send_message(
-                defender_telegram_id,
-                f"{outcome_msg}\nبرای جزئیات: /reports",
-                parse_mode="HTML",
-            )
-        except Exception:
-            pass
-
-    show_revenge = report.winner == "defender"  # یعنی مهاجم (خودت) باختی
     await callback.message.edit_text(
-        text,
-        reply_markup=post_pvp_battle_keyboard(defender_id, strategy_key, show_revenge),
-        parse_mode="HTML",
+        f"🛫 نیروهات اعزام شدن!\n⏳ تا حدود {travel_minutes} دقیقه‌ی دیگه نتیجه‌ی نبرد اعلام میشه.",
+        reply_markup=attack_menu_keyboard(),
     )
     await callback.answer()
 
@@ -423,10 +513,133 @@ def build_pvp_report_text(
             loot_parts.append(f"🌾{report.loot_food}")
         if loot_parts:
             lines.append("🏴‍☠️ غارت: " + " ".join(loot_parts))
+        territory_captured = getattr(report, "_territory_captured", 0)
+        if territory_captured:
+            lines.append(f"🗺️ خاک تصرف‌شده: {territory_captured} واحد")
     lines.append(f"⭐ XP: +{report.xp_gained}")
+
+    cup_gain = getattr(report, "_cup_gain", 0)
+    cup_loss = getattr(report, "_cup_loss", 0)
+    if won:
+        lines.append(f"🎖️ کاپ: +{cup_gain} (حریف {cup_loss}- شد)")
+    else:
+        lines.append(f"🎖️ کاپ: -{cup_loss}")
+
     if leveled_up:
         lines.append(f"\n🎊 لول‌آپ کردی! سطح جدید: {leveled_up[-1]}")
     return "\n".join(lines)
+
+
+# ---------------------------------------------------------------------------
+# حل شدن اعزام‌ها بعد از رسیدن به مقصد (تأخیر واقعی نبرد)
+# ---------------------------------------------------------------------------
+
+async def _schedule_expedition_resolve(bot: Bot, expedition_id: int, delay_seconds: int) -> None:
+    """تسک پس‌زمینه: صبر می‌کنه تا زمان سفر تموم بشه، بعد نبرد رو حل می‌کنه."""
+    await asyncio.sleep(max(0, delay_seconds))
+    try:
+        await _resolve_expedition(bot, expedition_id)
+    except Exception:
+        pass
+
+
+async def _resolve_expedition(bot: Bot, expedition_id: int) -> None:
+    async with get_session() as session:
+        expedition = await session.get(PendingExpedition, expedition_id)
+        if expedition is None or expedition.resolved:
+            return
+
+        attacker = await session.get(User, expedition.attacker_id)
+        if attacker is None:
+            expedition.resolved = True
+            await session.commit()
+            return
+
+        sent_units = {int(k): v for k, v in (expedition.sent_units or {}).items()}
+
+        room_token = current_room_id.set(expedition.room_id)
+        try:
+            if expedition.is_pvp:
+                defender = await session.get(User, expedition.defender_id) if expedition.defender_id else None
+                if defender is None:
+                    expedition.resolved = True
+                    await session.commit()
+                    return
+
+                report = await resolve_pvp_battle(session, attacker, defender, expedition.strategy_key, sent_units)
+                leveled_up = getattr(report, "_leveled_up", [])
+                defender_nickname = defender.nickname
+                await record_progress(session, attacker, "pvp_battle", 1)
+                if report.winner == "attacker":
+                    await record_progress(session, attacker, "battle_win", 1)
+                    await record_pvp_win(session, attacker)
+
+                war_note = ""
+                if attacker.alliance_id and defender.alliance_id and attacker.alliance_id != defender.alliance_id:
+                    war = await get_active_war_between(session, attacker.alliance_id, defender.alliance_id)
+                    if war is not None:
+                        winner_alliance_id = (
+                            attacker.alliance_id if report.winner == "attacker" else defender.alliance_id
+                        )
+                        await add_war_score(session, war, winner_alliance_id, report.attacker_power)
+                        war_note = "\n\n⚔️ این نبرد به امتیاز جنگ اتحادتون اضافه شد!"
+
+                expedition.resolved = True
+                await session.commit()
+
+                text = "📨 <b>نتیجه‌ی اعزام نیروهات:</b>\n\n" + build_pvp_report_text(
+                    report, defender_nickname, leveled_up, attacker.hp, attacker.max_hp, defender.hp, defender.max_hp
+                ) + war_note
+
+                if defender.notifications_enabled:
+                    outcome_msg = (
+                        f"⚔️ <b>{attacker.nickname}</b> بهت حمله کرد ولی دفعش کردی! 🛡️"
+                        if report.winner == "defender"
+                        else f"⚔️ <b>{attacker.nickname}</b> بهت حمله کرد و شکستت داد و غارتت کرد! 😡"
+                    )
+                    try:
+                        await bot.send_message(
+                            defender.telegram_id, f"{outcome_msg}\nبرای جزئیات: /reports", parse_mode="HTML"
+                        )
+                    except Exception:
+                        pass
+            else:
+                report = await resolve_bot_battle(
+                    session, attacker, expedition.difficulty, expedition.strategy_key, sent_units
+                )
+                leveled_up = getattr(report, "_leveled_up", [])
+                await record_progress(session, attacker, "bot_battle", 1)
+                if report.winner == "attacker":
+                    await record_progress(session, attacker, "battle_win", 1)
+
+                expedition.resolved = True
+                await session.commit()
+
+                text = "📨 <b>نتیجه‌ی اعزام نیروهات:</b>\n\n" + build_bot_report_text(
+                    report, leveled_up, attacker.hp, attacker.max_hp
+                )
+        finally:
+            current_room_id.reset(room_token)
+
+    try:
+        await bot.send_message(expedition.chat_id, text, parse_mode="HTML")
+    except Exception:
+        pass
+
+
+async def recover_pending_expeditions(bot: Bot) -> None:
+    """
+    موقع استارت ربات صدا زده میشه: اعزام‌هایی که هنوز حل نشدن رو دوباره
+    زمان‌بندی می‌کنه (یا اگه زمانشون گذشته، فوراً حلشون می‌کنه).
+    """
+    async with get_session() as session:
+        result = await session.execute(select(PendingExpedition).where(PendingExpedition.resolved == False))  # noqa: E712
+        pending = list(result.scalars().all())
+
+    now = datetime.utcnow()
+    for expedition in pending:
+        remaining = (expedition.arrival_at - now).total_seconds()
+        asyncio.create_task(_schedule_expedition_resolve(bot, expedition.id, max(0, int(remaining))))
 
 
 # ---------------------------------------------------------------------------

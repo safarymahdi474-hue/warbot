@@ -15,6 +15,8 @@ from bot.database.models import (
     UserUnit,
 )
 from bot.utils.military import (
+    heal_cost,
+    heal_wounded,
     effective_attack,
     effective_defense,
     finish_ready_research,
@@ -27,6 +29,8 @@ from bot.utils.military import (
     training_cost,
     training_duration,
 )
+from bot.utils.game_settings import get_unit_price_discount_percent
+from bot.utils.items import get_active_boost_percent
 from bot.utils.missions import record_progress
 from bot.utils.room_settings import deliver_sensitive_content
 
@@ -112,8 +116,10 @@ async def _load_state(session, telegram_id: int):
     return user, user_units, orders, user_researches
 
 
-def _training_speed_bonus(user_researches: list[UserResearch]) -> float:
-    return get_bonus_percent(user_researches, "training_speed_percent")
+async def _training_speed_bonus(session, user_id: int, user_researches: list[UserResearch]) -> float:
+    research_bonus = get_bonus_percent(user_researches, "training_speed_percent")
+    item_bonus = await get_active_boost_percent(session, user_id, "training_speed_percent")
+    return research_bonus + item_bonus
 
 
 def _attack_bonus(user_researches: list[UserResearch]) -> float:
@@ -130,11 +136,11 @@ def _defense_bonus(user_researches: list[UserResearch]) -> float:
 
 def build_army_summary_text(user_units: list[UserUnit], atk_bonus: float, def_bonus: float) -> str:
     total_attack = total_defense = 0
-    owned_subcats: set[str] = set()
+    owned_units_by_subcat: dict[str, list[UserUnit]] = {}
     for uu in user_units:
         ut = uu.unit_type
         if uu.quantity > 0:
-            owned_subcats.add(ut.subcategory)
+            owned_units_by_subcat.setdefault(ut.subcategory, []).append(uu)
         atk = effective_attack(ut, atk_bonus)
         dfn = effective_defense(ut, def_bonus)
         total_attack += atk * uu.quantity
@@ -143,8 +149,21 @@ def build_army_summary_text(user_units: list[UserUnit], atk_bonus: float, def_bo
     lines = [
         "⚔️ <b>ارتش تو</b>\n",
         f"📊 مجموع قدرت — ⚔️ حمله: {total_attack} | 🛡️ دفاع: {total_defense}\n",
-        "یه دسته رو انتخاب کن تا نیروهاش رو ببینی:",
     ]
+
+    if owned_units_by_subcat:
+        lines.append("📋 <b>نیروهای من:</b>")
+        for subcat in SUBCATEGORY_ORDER:
+            rows = owned_units_by_subcat.get(subcat)
+            if not rows:
+                continue
+            rows.sort(key=lambda uu: uu.unit_type.tier)
+            for uu in rows:
+                ut = uu.unit_type
+                lines.append(f"  {ut.icon} {ut.name_fa}: <b>{uu.quantity}</b> عدد")
+        lines.append("")
+
+    lines.append("یه دسته رو انتخاب کن تا نیروهاش رو ببینی:")
     return "\n".join(lines)
 
 
@@ -311,25 +330,30 @@ async def cb_army_category(callback: CallbackQuery) -> None:
 # لایه‌ی ۳: جزئیات + خرید یک نوع نیرو خاص
 # ---------------------------------------------------------------------------
 
-def unit_detail_keyboard(unit_type_id: int, subcat: str) -> InlineKeyboardMarkup:
+def unit_detail_keyboard(unit_type_id: int, subcat: str, wounded_quantity: int = 0) -> InlineKeyboardMarkup:
     rows = [
         [
             InlineKeyboardButton(text=f"🛒 خرید {q}", callback_data=f"buy_unit:{unit_type_id}:{q}")
             for q in BUY_QUANTITIES
         ],
-        [InlineKeyboardButton(text="🔙 بازگشت به این دسته", callback_data=f"army_cat:{subcat}")],
     ]
+    if wounded_quantity > 0:
+        rows.append(
+            [InlineKeyboardButton(text=f"🩹 درمان مجروحین ({wounded_quantity})", callback_data=f"heal_unit:{unit_type_id}")]
+        )
+    rows.append([InlineKeyboardButton(text="🔙 بازگشت به این دسته", callback_data=f"army_cat:{subcat}")])
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
-def build_unit_detail_text(uu: UserUnit, speed_bonus: float, atk_bonus: float, def_bonus: float) -> str:
+def build_unit_detail_text(uu: UserUnit, speed_bonus: float, atk_bonus: float, def_bonus: float, discount_percent: float = 0.0) -> str:
     ut = uu.unit_type
     atk = effective_attack(ut, atk_bonus)
     dfn = effective_defense(ut, def_bonus)
 
     lines = [
         f"{ut.icon} <b>{ut.name_fa}</b>",
-        f"تعداد فعلی: {uu.quantity}",
+        f"تعداد فعلی: {uu.quantity}"
+        + (f" | 🩹 مجروح: {uu.wounded_quantity}" if uu.wounded_quantity else ""),
         f"⚔️ حمله (هر واحد): {atk}  🛡️ دفاع (هر واحد): {dfn}\n",
         "💰 هزینه هر واحد:",
         f"  {ut.cost_gold} طلا"
@@ -337,9 +361,11 @@ def build_unit_detail_text(uu: UserUnit, speed_bonus: float, atk_bonus: float, d
         + (f" + {ut.cost_oil} نفت" if ut.cost_oil else "")
         + (f" + {ut.cost_uranium} اورانیوم" if ut.cost_uranium else ""),
     ]
+    if discount_percent:
+        lines.append(f"🏷️ تخفیف فعلی ادمین: {discount_percent:.0f}٪")
 
     for q in BUY_QUANTITIES:
-        cost = training_cost(ut, q)
+        cost = training_cost(ut, q, discount_percent)
         duration = training_duration(ut, q, speed_bonus)
         minutes = max(1, int(duration.total_seconds() // 60))
         lines.append(f"  خرید {q} عدد → {minutes} دقیقه زمان آموزش")
@@ -364,14 +390,16 @@ async def cb_unit_menu(callback: CallbackQuery) -> None:
             return
 
         subcat = uu.unit_type.subcategory
+        discount_percent = await get_unit_price_discount_percent(session)
+        speed_bonus = await _training_speed_bonus(session, user.id, user_researches)
         text = build_unit_detail_text(
-            uu, _training_speed_bonus(user_researches), _attack_bonus(user_researches), _defense_bonus(user_researches)
+            uu, speed_bonus, _attack_bonus(user_researches), _defense_bonus(user_researches), discount_percent
         )
 
     try:
-        await callback.message.edit_text(text, reply_markup=unit_detail_keyboard(unit_type_id, subcat), parse_mode="HTML")
+        await callback.message.edit_text(text, reply_markup=unit_detail_keyboard(unit_type_id, subcat, uu.wounded_quantity), parse_mode="HTML")
     except Exception:
-        await callback.message.answer(text, reply_markup=unit_detail_keyboard(unit_type_id, subcat), parse_mode="HTML")
+        await callback.message.answer(text, reply_markup=unit_detail_keyboard(unit_type_id, subcat, uu.wounded_quantity), parse_mode="HTML")
     await callback.answer()
 
 
@@ -392,8 +420,9 @@ async def cb_buy_unit(callback: CallbackQuery) -> None:
             await callback.answer("این نیرو پیدا نشد.", show_alert=True)
             return
 
-        speed_bonus = _training_speed_bonus(user_researches)
-        result = start_training(user, unit_type, qty, speed_bonus)
+        speed_bonus = await _training_speed_bonus(session, user.id, user_researches)
+        discount_percent = await get_unit_price_discount_percent(session)
+        result = start_training(user, unit_type, qty, speed_bonus, discount_percent)
 
         if isinstance(result, str):
             await callback.answer(result, show_alert=True)
@@ -415,6 +444,44 @@ async def cb_buy_unit(callback: CallbackQuery) -> None:
         await callback.message.edit_text(text, reply_markup=keyboard, parse_mode="HTML")
     except Exception:
         await callback.message.answer(text, reply_markup=keyboard, parse_mode="HTML")
+
+
+@router.callback_query(F.data.startswith("heal_unit:"))
+async def cb_heal_unit(callback: CallbackQuery) -> None:
+    unit_type_id = int(callback.data.split(":")[1])
+
+    async with get_session() as session:
+        user, user_units, orders, user_researches = await _load_state(session, callback.from_user.id)
+        if user is None:
+            await callback.answer("هنوز ثبت‌نام نکردی!", show_alert=True)
+            return
+
+        uu = next((u for u in user_units if u.unit_type_id == unit_type_id), None)
+        if uu is None or uu.wounded_quantity <= 0:
+            await callback.answer("مجروحی از این نیرو نداری.", show_alert=True)
+            return
+
+        discount_percent = await get_unit_price_discount_percent(session)
+        qty = uu.wounded_quantity  # همه‌ی مجروحین رو یه‌جا درمان می‌کنه
+        error = heal_wounded(user, uu, uu.unit_type, qty, discount_percent)
+        if error:
+            await callback.answer(error, show_alert=True)
+            return
+
+        await session.commit()
+        subcat = uu.unit_type.subcategory
+        await callback.answer(f"✅ {qty} واحد {uu.unit_type.name_fa} درمان و به ارتش برگشتن!", show_alert=True)
+
+    text, keyboard = await _army_view(callback.from_user.id)
+    async with get_session() as session:
+        user, user_units, orders, user_researches = await _load_state(session, callback.from_user.id)
+        cat_text = build_category_text(subcat, user, user_units, orders)
+        cat_keyboard = category_units_keyboard(subcat, user, user_units)
+
+    try:
+        await callback.message.edit_text(cat_text, reply_markup=cat_keyboard, parse_mode="HTML")
+    except Exception:
+        await callback.message.answer(cat_text, reply_markup=cat_keyboard, parse_mode="HTML")
 
 
 # ---------------------------------------------------------------------------

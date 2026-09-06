@@ -9,6 +9,7 @@ from bot.utils.context import current_room, user_scope
 from bot.database.models import BuildingType, User, UserBuilding, UserResearch
 from bot.keyboards.menus import buildings_keyboard
 from bot.utils.global_events import get_oil_production_multiplier
+from bot.utils.items import get_active_boost_percent
 from bot.utils.military import get_bonus_percent
 from bot.utils.missions import record_progress
 from bot.utils.resources import (
@@ -32,7 +33,9 @@ async def _get_build_time_bonus(session, user_id: int) -> float:
         .where(UserResearch.user_id == user_id)
     )
     researches = list(result.scalars().all())
-    return get_bonus_percent(researches, "build_time_reduction_percent")
+    research_bonus = get_bonus_percent(researches, "build_time_reduction_percent")
+    item_bonus = await get_active_boost_percent(session, user_id, "build_time_reduction_percent")
+    return research_bonus + item_bonus
 
 
 async def _backfill_missing_buildings(session, user: User) -> None:

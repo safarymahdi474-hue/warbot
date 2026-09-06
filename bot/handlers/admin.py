@@ -1,4 +1,5 @@
 import asyncio
+from datetime import datetime
 
 from aiogram import F, Router
 from aiogram.filters import Command, CommandObject
@@ -24,7 +25,17 @@ from bot.utils.exchange import (
     set_buy_markup_percent,
     set_sell_price,
 )
-from bot.utils.game_settings import are_wars_enabled, set_wars_enabled
+from bot.utils.game_settings import (
+    are_wars_enabled,
+    get_unit_price_discount_percent,
+    set_unit_price_discount_percent,
+    set_wars_enabled,
+)
+from bot.utils.force_join import (
+    add_force_join_channel,
+    list_force_join_channels,
+    remove_force_join_channel,
+)
 from bot.utils.giftcode import create_gift_code, deactivate_gift_code, get_recent_gift_codes
 from bot.utils.referral import get_referral_leaderboard
 
@@ -63,6 +74,11 @@ def admin_panel_text(wars_enabled: bool) -> str:
         "/serverstats — آمار کامل سرور\n"
         "/adminlogs — لاگ اقدامات اخیر\n"
         "/pendingstatements — بیانیه‌های در انتظار تایید\n"
+        "/pendingpurchases — درخواست‌های خرید کارت‌به‌کارت در انتظار تایید\n"
+        "/shopadmin — مدیریت کامل فروشگاه (قیمت/آیتم/شماره کارت)\n"
+        "/addforcejoin آیدی_کانال لینک_دعوت [ساعت] — افزودن کانال عضویت اجباری (بدون ساعت = دائمی)\n"
+        "/removeforcejoin آیدی_کانال — حذف یه کانال اجباری\n"
+        "/listforcejoin — لیست کانال‌های اجباری فعلی\n"
         "/referrals — رتبه‌بندی بیشترین رفرال‌گیرها\n"
         "/creategift طلا تعداد_استفاده [کد_دلخواه] — ساخت کد هدیه\n"
         "/giftcodes — لیست کدهای هدیه اخیر\n"
@@ -532,3 +548,144 @@ async def cmd_set_markup(message: Message, command: CommandObject) -> None:
         message.bot,
         f"📢 <b>تغییر تنظیمات بازار آنی</b>\n\nدرصد سود خرید از صرافی به {percent}٪ تغییر کرد.",
     )
+
+
+@router.message(Command("setunitdiscount"))
+async def cmd_set_unit_discount(message: Message, command: CommandObject) -> None:
+    _, is_admin = await _require_admin(message.from_user.id)
+    if not is_admin:
+        return
+
+    arg = (command.args or "").strip()
+    try:
+        percent = int(arg)
+        assert 0 <= percent <= 95
+    except (ValueError, AssertionError):
+        async with get_session() as session:
+            current = await get_unit_price_discount_percent(session)
+        await message.answer(
+            "فرمت درست: <code>/setunitdiscount درصد</code> (بین ۰ تا ۹۵)\n"
+            f"مثال: <code>/setunitdiscount 25</code>\nدرصد فعلی: {current}٪",
+            parse_mode="HTML",
+        )
+        return
+
+    async with get_session() as session:
+        old_percent = await get_unit_price_discount_percent(session)
+        await set_unit_price_discount_percent(session, percent)
+        await log_action(
+            session, "set_unit_discount", message.from_user.id, None, f"{old_percent}% -> {percent}%"
+        )
+        await session.commit()
+
+    await message.answer(
+        f"✅ تخفیف قیمت ساخت نیروها از {old_percent}٪ به {percent}٪ تغییر کرد.\n"
+        "(همه‌ی هزینه‌ها همیشه رند به بالا محاسبه میشن، بدون اعشار.)"
+    )
+
+
+# ---------------------------------------------------------------------------
+# مدیریت کانال‌های عضویت اجباری (قابل افزودن/حذف از داخل ربات، با انقضای اختیاری)
+# ---------------------------------------------------------------------------
+
+@router.message(Command("addforcejoin"))
+async def cmd_add_force_join(message: Message, command: CommandObject) -> None:
+    _, is_admin = await _require_admin(message.from_user.id)
+    if not is_admin:
+        return
+
+    args = (command.args or "").strip().split()
+    if len(args) < 2:
+        await message.answer(
+            "فرمت درست: <code>/addforcejoin آیدی_کانال لینک_دعوت [ساعت]</code>\n"
+            "مثال دائمی: <code>/addforcejoin @mychannel https://t.me/mychannel</code>\n"
+            "مثال موقت (تا ۶ ساعت دیگه): <code>/addforcejoin @mychannel https://t.me/mychannel 6</code>\n\n"
+            "⚠️ حتماً ربات رو تو اون کانال ادمین کن، وگرنه چک عضویت درست کار نمی‌کنه.",
+            parse_mode="HTML",
+        )
+        return
+
+    chat_id, invite_url = args[0], args[1]
+    hours = None
+    if len(args) >= 3:
+        try:
+            hours = int(args[2])
+        except ValueError:
+            await message.answer("ساعت باید عدد باشه.")
+            return
+
+    async with get_session() as session:
+        result = await add_force_join_channel(session, message.from_user.id, chat_id, invite_url, hours)
+        if isinstance(result, str):
+            await message.answer(f"❌ {result}")
+            return
+
+        await log_action(
+            session,
+            "add_force_join",
+            message.from_user.id,
+            None,
+            f"{chat_id} — {'دائمی' if not hours else f'{hours} ساعته'}",
+        )
+        await session.commit()
+
+    expiry_note = "دائمیه" if not hours else f"تا {hours} ساعت دیگه فعاله و بعدش خودکار حذف میشه"
+    await message.answer(f"✅ کانال {chat_id} به لیست عضویت اجباری اضافه شد ({expiry_note}).")
+
+
+@router.message(Command("removeforcejoin"))
+async def cmd_remove_force_join(message: Message, command: CommandObject) -> None:
+    _, is_admin = await _require_admin(message.from_user.id)
+    if not is_admin:
+        return
+
+    chat_id = (command.args or "").strip()
+    if not chat_id:
+        await message.answer("فرمت درست: <code>/removeforcejoin آیدی_کانال</code>", parse_mode="HTML")
+        return
+
+    async with get_session() as session:
+        error = await remove_force_join_channel(session, chat_id)
+        if error:
+            await message.answer(f"❌ {error}")
+            return
+        await log_action(session, "remove_force_join", message.from_user.id, None, chat_id)
+        await session.commit()
+
+    await message.answer(f"✅ کانال {chat_id} از لیست عضویت اجباری حذف شد.")
+
+
+@router.message(Command("listforcejoin"))
+async def cmd_list_force_join(message: Message) -> None:
+    _, is_admin = await _require_admin(message.from_user.id)
+    if not is_admin:
+        return
+
+    async with get_session() as session:
+        channels = await list_force_join_channels(session)
+        await session.commit()
+
+    static_channels = settings.force_join_channels
+    if not channels and not static_channels:
+        await message.answer("📢 هیچ کانال عضویت اجباری‌ای فعال نیست.")
+        return
+
+    lines = ["📢 <b>کانال‌های عضویت اجباری فعلی</b>\n"]
+    if static_channels:
+        lines.append("🔒 <b>ثابت (از .env - فقط با ری‌دیپلوی قابل تغییره):</b>")
+        for chat_id, url in static_channels:
+            lines.append(f"  • {chat_id}")
+
+    if channels:
+        lines.append("\n🗂️ <b>اضافه‌شده از ربات:</b>")
+        now = datetime.utcnow()
+        for c in channels:
+            if c.expires_at is None:
+                expiry = "دائمی"
+            else:
+                remaining = c.expires_at - now
+                minutes_left = max(0, int(remaining.total_seconds() // 60))
+                expiry = f"{minutes_left // 60} ساعت و {minutes_left % 60} دقیقه‌ی دیگه حذف میشه"
+            lines.append(f"  • {c.chat_id} — {expiry}")
+
+    await message.answer("\n".join(lines), parse_mode="HTML")
