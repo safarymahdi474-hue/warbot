@@ -1315,6 +1315,26 @@ DEFAULT_ITEM_TYPES = [
         "duration_minutes": 0,
         "tradeable": True,
     },
+    {
+        "key": "quick_training_scroll",
+        "name_fa": "طلسم آموزش سریع",
+        "icon": "🏋️",
+        "description": "به مدت ۱ ساعت ۳۰٪ به سرعت آموزش نیروهات اضافه می‌کنه.",
+        "effect_type": "training_speed_percent",
+        "effect_value": 30,
+        "duration_minutes": 60,
+        "tradeable": True,
+    },
+    {
+        "key": "quick_construction_scroll",
+        "name_fa": "طلسم ساخت‌وساز سریع",
+        "icon": "🏗️",
+        "description": "به مدت ۱ ساعت ۳۰٪ به سرعت ساخت/ارتقای ساختمان‌هات اضافه می‌کنه.",
+        "effect_type": "build_time_reduction_percent",
+        "effect_value": 30,
+        "duration_minutes": 60,
+        "tradeable": True,
+    },
 ]
 
 # لیست اولیه‌ی دستاوردها - فاز ۸
@@ -1396,7 +1416,7 @@ DEFAULT_ALLIANCE_RESEARCH_TYPES = [
     },
 ]
 
-# لیست اولیه‌ی فروشگاه - فاز ۹ (قیمت‌ها به تلگرام استارز/XTR)
+# لیست اولیه‌ی فروشگاه - قیمت‌ها به تومن (پرداخت کارت‌به‌کارت با تایید ادمین)
 # نکته: reward_item_key در init_db به ItemType.id واقعی تبدیل میشه (چون قبل از سید شدن آیتم‌ها اینجا id نداریم)
 DEFAULT_SHOP_ITEMS = [
     {
@@ -1405,6 +1425,7 @@ DEFAULT_SHOP_ITEMS = [
         "icon": "💰",
         "description": "۲۰۰۰ طلا مستقیم به حسابت اضافه میشه.",
         "price_stars": 30,
+        "price_toman": 50000,
         "reward_gold": 2000,
     },
     {
@@ -1413,6 +1434,7 @@ DEFAULT_SHOP_ITEMS = [
         "icon": "💰",
         "description": "۱۲۰۰۰ طلا مستقیم به حسابت اضافه میشه.",
         "price_stars": 150,
+        "price_toman": 250000,
         "reward_gold": 12000,
     },
     {
@@ -1421,6 +1443,7 @@ DEFAULT_SHOP_ITEMS = [
         "icon": "🪙",
         "description": "۱۰۰ سکه پرمیوم می‌گیری.",
         "price_stars": 50,
+        "price_toman": 80000,
         "reward_coins": 100,
     },
     {
@@ -1429,6 +1452,7 @@ DEFAULT_SHOP_ITEMS = [
         "icon": "⚡",
         "description": "۵ عدد معجون انرژی به اینونتوریت اضافه میشه.",
         "price_stars": 40,
+        "price_toman": 60000,
         "reward_item_key": "energy_potion",
         "reward_item_quantity": 5,
     },
@@ -1438,7 +1462,28 @@ DEFAULT_SHOP_ITEMS = [
         "icon": "⚔️",
         "description": "۳ عدد طلسم حمله به اینونتوریت اضافه میشه.",
         "price_stars": 80,
+        "price_toman": 120000,
         "reward_item_key": "attack_scroll",
+        "reward_item_quantity": 3,
+    },
+    {
+        "key": "training_bundle",
+        "name_fa": "بسته آموزش سریع",
+        "icon": "🏋️",
+        "description": "۳ عدد طلسم آموزش سریع به اینونتوریت اضافه میشه.",
+        "price_stars": 60,
+        "price_toman": 100000,
+        "reward_item_key": "quick_training_scroll",
+        "reward_item_quantity": 3,
+    },
+    {
+        "key": "construction_bundle",
+        "name_fa": "بسته ساخت‌وساز سریع",
+        "icon": "🏗️",
+        "description": "۳ عدد طلسم ساخت‌وساز سریع به اینونتوریت اضافه میشه.",
+        "price_stars": 60,
+        "price_toman": 100000,
+        "reward_item_key": "quick_construction_scroll",
         "reward_item_quantity": 3,
     },
 ]

@@ -7,6 +7,7 @@ from sqlalchemy import (
     Float,
     ForeignKey,
     Integer,
+    JSON,
     String,
     UniqueConstraint,
 )
@@ -103,6 +104,12 @@ class User(Base):
 
     # --- تنظیمات (فاز ۱۰) ---
     notifications_enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+
+    # --- تصرف خاک ---
+    territory_count: Mapped[int] = mapped_column(Integer, default=3)
+
+    # --- لیگ‌بندی (بر اساس درجه‌ی نظامی) ---
+    league_cup: Mapped[int] = mapped_column(Integer, default=0)
 
     # --- روم گروهی (فاز ۱۲) ---
     # room_id=None یعنی پروفایل اصلی (چت خصوصی با ربات). هر گروه یه Room جدا داره
@@ -226,6 +233,8 @@ class UserUnit(Base):
     unit_type_id: Mapped[int] = mapped_column(ForeignKey("unit_types.id"))
 
     quantity: Mapped[int] = mapped_column(Integer, default=0)
+    # به‌جای نابودی کامل، بخشی از تلفات جنگی میان اینجا و با هزینه‌ی کم درمان میشن
+    wounded_quantity: Mapped[int] = mapped_column(Integer, default=0)
 
     user: Mapped["User"] = relationship(back_populates="units")
     unit_type: Mapped["UnitType"] = relationship(back_populates="user_units")
@@ -604,8 +613,8 @@ class UserAchievement(Base):
 
 class ShopItem(Base):
     """
-    آیتم فروشگاه که با تلگرام استارز (XTR) خریداری میشه. price_stars مستقیم
-    تعداد استارز هست (برخلاف ارزهای معمولی، برای XTR ضرب‌در-۱۰۰ لازم نیست).
+    آیتم فروشگاه - پک‌های ویژه که با کارت‌به‌کارت خریداری میشن (نه تلگرام
+    استارز). کاربر فیش رو می‌فرسته، ادمین تایید/رد می‌کنه.
     """
     __tablename__ = "shop_items"
 
@@ -614,7 +623,8 @@ class ShopItem(Base):
     name_fa: Mapped[str] = mapped_column(String(128))
     icon: Mapped[str] = mapped_column(String(8), default="🛍️")
     description: Mapped[str] = mapped_column(String(256), default="")
-    price_stars: Mapped[int] = mapped_column(Integer, default=1)
+    price_stars: Mapped[int] = mapped_column(Integer, default=1)  # میراث فاز استارز - دیگه استفاده نمیشه
+    price_toman: Mapped[int] = mapped_column(Integer, default=0)  # قیمت واقعی به تومن (کارت‌به‌کارت)
 
     reward_gold: Mapped[int] = mapped_column(Integer, default=0)
     reward_coins: Mapped[int] = mapped_column(Integer, default=0)
@@ -627,7 +637,7 @@ class ShopItem(Base):
 
 
 class Purchase(Base):
-    """لاگ خریدهای موفق درون‌برنامه‌ای (برای حسابرسی و پشتیبانی)."""
+    """لاگ خریدهای تایید-شده (برای حسابرسی و پشتیبانی)."""
     __tablename__ = "purchases"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
@@ -636,6 +646,27 @@ class Purchase(Base):
     stars_paid: Mapped[int] = mapped_column(Integer, default=0)
     telegram_payment_charge_id: Mapped[str] = mapped_column(String(128), default="")
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class PurchaseRequest(Base):
+    """
+    درخواست خرید کارت‌به‌کارت که هنوز در انتظار بررسی/بعد از بررسی ادمینه.
+    status: 'pending' | 'approved' | 'rejected'
+    """
+    __tablename__ = "purchase_requests"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
+    shop_item_id: Mapped[int] = mapped_column(ForeignKey("shop_items.id"))
+    receipt_file_id: Mapped[str] = mapped_column(String(256))
+    status: Mapped[str] = mapped_column(String(16), default="pending")
+    admin_reply: Mapped[str | None] = mapped_column(String(256), nullable=True)
+    reviewed_by_telegram_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    reviewed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    user: Mapped["User"] = relationship()
+    shop_item: Mapped["ShopItem"] = relationship()
 
 
 class PrivateMessage(Base):
@@ -779,3 +810,45 @@ class BannedTelegramUser(Base):
     reason: Mapped[str] = mapped_column(String(256), default="")
     banned_by: Mapped[int] = mapped_column(BigInteger)
     banned_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class PendingExpedition(Base):
+    """
+    اعزام نیرو که هنوز به مقصد نرسیده (فاصله‌ی زمانی بین شروع حمله تا اعلام
+    نتیجه). sent_units یه دیکشنری {unit_type_id: quantity} از سهمی از ارتشه
+    که اعزام شده - بقیه‌ی ارتش خونه می‌مونه و درگیر این نبرد نمیشه.
+    وقتی ربات ری‌استارت میشه، recover_pending_expeditions همه‌ی ردیف‌های
+    resolved=False رو دوباره زمان‌بندی می‌کنه (یا فوراً حل می‌کنه اگه زمانش گذشته).
+    """
+    __tablename__ = "pending_expeditions"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    attacker_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
+    defender_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    is_pvp: Mapped[bool] = mapped_column(Boolean, default=True)
+    difficulty: Mapped[str | None] = mapped_column(String(16), nullable=True)  # فقط برای نبرد با ربات
+    strategy_key: Mapped[str] = mapped_column(String(32), default="balanced")
+    sent_units: Mapped[dict] = mapped_column(JSON, default=dict)  # {unit_type_id(str): quantity}
+    room_id: Mapped[int | None] = mapped_column(ForeignKey("rooms.id"), nullable=True)
+    chat_id: Mapped[int] = mapped_column(BigInteger)
+    attacker_telegram_id: Mapped[int] = mapped_column(BigInteger)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    arrival_at: Mapped[datetime] = mapped_column(DateTime)
+    resolved: Mapped[bool] = mapped_column(Boolean, default=False)
+
+
+class ForceJoinChannel(Base):
+    """
+    کانال عضویت اجباری که ادمین از داخل ربات (نه فقط .env) اضافه می‌کنه.
+    expires_at=None یعنی دائمیه؛ وگرنه بعد از اون زمان خودش (توسط
+    force_join.py، همون لحظه‌ای که چک میشه) حذف/نادیده گرفته میشه.
+    """
+    __tablename__ = "force_join_channels"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    chat_id: Mapped[str] = mapped_column(String(64))
+    invite_url: Mapped[str] = mapped_column(String(256))
+    title: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    added_by_telegram_id: Mapped[int] = mapped_column(BigInteger)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
