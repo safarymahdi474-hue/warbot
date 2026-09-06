@@ -60,10 +60,10 @@ class Settings:
     PVP_TARGETS_SHOWN: int = 5
 
     # --- تصرف خاک (Territory) ---
-    STARTING_TERRITORY_COUNT: int = 3  # تعداد خاک مادری هر بازیکن تازه‌وارد
+    STARTING_TERRITORY_COUNT: int = 5  # تعداد خاک مادری هر بازیکن تازه‌وارد
     MIN_TERRITORY_KEPT: int = 1  # هیچ بازیکنی نمی‌تونه کمتر از این مقدار خاک داشته باشه (هیچ‌وقت کاملاً بی‌خاک نمیشه)
     TERRITORY_CAPTURE_ENABLED: bool = True  # اگه False بشه، برد PvP دیگه خاک تصرف نمی‌کنه
-    TERRITORY_CAPTURE_PERCENT: int = 20  # چند درصد از خاک فعلی بازنده (حداقل ۱ واحد) تصرف میشه
+    TERRITORY_CAPTURE_PERCENT: int = 10  # چند درصد از خاک فعلی بازنده (حداقل ۱ واحد) تصرف میشه
 
     # --- لیگ‌بندی (درجه‌ی نظامی) ---
     LEAGUE_CUP_WIN_GAIN: int = 15  # برنده‌ی نبرد PvP چقدر کاپ می‌گیره
