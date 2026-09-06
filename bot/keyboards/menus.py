@@ -15,7 +15,10 @@ def main_menu_keyboard() -> InlineKeyboardMarkup:
                 InlineKeyboardButton(text="🏗️ ساختمان‌ها", callback_data="show_buildings"),
             ],
             [InlineKeyboardButton(text="⚔️ ارتش من", callback_data="show_army")],
-            [InlineKeyboardButton(text="🗡️ حمله", callback_data="show_attack_menu")],
+            [
+                InlineKeyboardButton(text="🗡️ حمله", callback_data="show_attack_menu"),
+                InlineKeyboardButton(text="🗺️ خاک‌های من", callback_data="show_territory"),
+            ],
             [
                 InlineKeyboardButton(text="🎯 ماموریت‌ها", callback_data="show_missions"),
                 InlineKeyboardButton(text="🎁 جوایز", callback_data="show_rewards_menu"),
