@@ -58,6 +58,12 @@ class Settings:
     STARTING_TERRITORY_COUNT: int = 3  # تعداد خاک مادری هر بازیکن تازه‌وارد
     MIN_TERRITORY_KEPT: int = 1  # هیچ بازیکنی نمی‌تونه کمتر از این مقدار خاک داشته باشه (هیچ‌وقت کاملاً بی‌خاک نمیشه)
     TERRITORY_CAPTURE_ENABLED: bool = True  # اگه False بشه، برد PvP دیگه خاک تصرف نمی‌کنه
+    TERRITORY_CAPTURE_PERCENT: int = 20  # چند درصد از خاک فعلی بازنده (حداقل ۱ واحد) تصرف میشه
+
+    # --- لیگ‌بندی (درجه‌ی نظامی) ---
+    LEAGUE_CUP_WIN_GAIN: int = 15  # برنده‌ی نبرد PvP چقدر کاپ می‌گیره
+    LEAGUE_CUP_LOSE_PENALTY: int = 10  # بازنده‌ی نبرد PvP چقدر کاپ از دست می‌ده
+    LEAGUE_MATCH_TIER_RANGE: int = 1  # فقط لیگ خودت یا ±۱ لیگ دیگه قابل حمله‌ان
 
     # --- جاسوسی (تنوع‌بخشی نبرد) ---
     SPY_GOLD_COST: int = 50
@@ -115,6 +121,10 @@ class Settings:
     STATEMENT_MAX_LENGTH: int = 500
     STATEMENT_COOLDOWN_HOURS: int = 12
     STATEMENT_CHANNEL_ID: str = os.getenv("STATEMENT_CHANNEL_ID", "")
+
+    # --- فروشگاه (کارت‌به‌کارت) ---
+    PAYMENT_CARD_NUMBER: str = os.getenv("PAYMENT_CARD_NUMBER", "0000-0000-0000-0000")
+    PAYMENT_CARD_HOLDER_NAME: str = os.getenv("PAYMENT_CARD_HOLDER_NAME", "نام صاحب حساب")
 
     # --- رفرال و دستاورد (فاز ۸) ---
     REFERRAL_MILESTONE_LEVEL: int = 5
