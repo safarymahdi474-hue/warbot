@@ -15,6 +15,7 @@ from bot.handlers import (
     alliance,
     battle,
     buildings,
+    bugreport,
     giftcode,
     inventory,
     market,
@@ -70,6 +71,8 @@ PLAYER_COMMANDS = [
     BotCommand(command="redeem", description="🎁 فعال‌سازی کد هدیه"),
     BotCommand(command="roomsettings", description="🔒 تنظیمات این گروه (ادمین گروه)"),
     BotCommand(command="support", description="🆘 ثبت درخواست پشتیبانی"),
+    BotCommand(command="reportbug", description="🐞 گزارش باگ (شانس جایزه)"),
+    BotCommand(command="mybugreports", description="📋 گزارش‌های باگ من"),
     BotCommand(command="mytickets", description="🎫 تیکت‌های پشتیبانی من"),
 ]
 
@@ -125,6 +128,7 @@ async def main() -> None:
     dp.include_router(messages.router)
     dp.include_router(settings_handler.router)
     dp.include_router(support.router)
+    dp.include_router(bugreport.router)
     dp.include_router(giftcode.router)
     dp.include_router(room_settings.router)
     dp.include_router(admin.router)
