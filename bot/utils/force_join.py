@@ -76,7 +76,11 @@ async def build_force_join_keyboard(bot: Bot, unjoined: list[tuple[str, str]]) -
         except Exception:
             pass
         label = f"📢 عضویت در {title}" if title else f"📢 عضویت در کانال {i}"
-        rows.append([InlineKeyboardButton(text=label, url=url)])
+        try:
+            rows.append([InlineKeyboardButton(text=label, url=url)])
+        except Exception:
+            # اگه لینک بازم به هر دلیلی نامعتبر بود، حداقل کل پیام خراب نشه
+            continue
     rows.append(
         [InlineKeyboardButton(text="✅ عضو شدم، بررسی کن", callback_data="check_force_join")]
     )
@@ -87,6 +91,22 @@ async def build_force_join_keyboard(bot: Bot, unjoined: list[tuple[str, str]]) -
 # مدیریت کانال‌ها از پنل ادمین
 # ---------------------------------------------------------------------------
 
+def _normalize_invite_url(raw: str) -> str:
+    """
+    هرچی ادمین تایپ کنه رو به یه لینک قابل‌استفاده تبدیل می‌کنه:
+    - اگه از قبل http/https داشت، همون‌جوری می‌مونه.
+    - اگه با t.me/ یا telegram.me/ شروع بشه، فقط https:// جلوش اضافه میشه.
+    - اگه با @ شروع بشه یا فقط یوزرنیم باشه، به https://t.me/<یوزرنیم> تبدیل میشه.
+    """
+    raw = raw.strip()
+    if raw.startswith("http://") or raw.startswith("https://"):
+        return raw
+    if raw.startswith("t.me/") or raw.startswith("telegram.me/"):
+        return f"https://{raw}"
+    username = raw.lstrip("@")
+    return f"https://t.me/{username}"
+
+
 async def add_force_join_channel(
     session: AsyncSession, admin_telegram_id: int, chat_id: str, invite_url: str, hours: int | None
 ) -> ForceJoinChannel | str:
@@ -95,8 +115,8 @@ async def add_force_join_channel(
     invite_url = invite_url.strip()
     if not chat_id or not invite_url:
         return "آیدی کانال و لینک دعوت نمی‌تونن خالی باشن."
-    if not invite_url.startswith("http"):
-        return "لینک دعوت باید با http شروع بشه."
+
+    invite_url = _normalize_invite_url(invite_url)
 
     expires_at = None
     if hours and hours > 0:
