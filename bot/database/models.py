@@ -208,6 +208,7 @@ class UnitType(Base):
     tier: Mapped[int] = mapped_column(Integer, default=1)
     name_fa: Mapped[str] = mapped_column(String(64))
     icon: Mapped[str] = mapped_column(String(8), default="⚔️")
+    image_file_id: Mapped[str | None] = mapped_column(String(256), nullable=True)  # عکس واقعی (فایل تلگرام) - اختیاری
 
     base_attack: Mapped[int] = mapped_column(Integer, default=1)
     base_defense: Mapped[int] = mapped_column(Integer, default=1)
@@ -852,24 +853,3 @@ class ForceJoinChannel(Base):
     added_by_telegram_id: Mapped[int] = mapped_column(BigInteger)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     expires_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
-
-
-class BugReport(Base):
-    """
-    گزارش باگ از طرف بازیکن. اگه ادمین تشخیص بده واقعاً باگه، می‌تونه مستقیم
-    از همون پیام یه مقدار طلا به‌عنوان جایزه به گزارش‌دهنده بده.
-    status: 'pending' | 'rewarded' | 'rejected'
-    """
-    __tablename__ = "bug_reports"
-
-    id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
-    message: Mapped[str] = mapped_column(String(1000))
-    status: Mapped[str] = mapped_column(String(16), default="pending")
-    admin_reply: Mapped[str | None] = mapped_column(String(256), nullable=True)
-    reward_gold: Mapped[int] = mapped_column(Integer, default=0)
-    reviewed_by_telegram_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
-    reviewed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
-
-    user: Mapped["User"] = relationship()
