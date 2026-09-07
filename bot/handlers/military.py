@@ -1,9 +1,12 @@
 from aiogram import F, Router
 from aiogram.filters import Command
+from aiogram.fsm.context import FSMContext
+from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 
+from bot.config import settings
 from bot.database.db import get_session
 from bot.utils.context import current_room, user_scope
 from bot.database.models import (
@@ -37,6 +40,10 @@ from bot.utils.room_settings import deliver_sensitive_content
 NOT_REGISTERED_MSG = "هنوز ثبت‌نام نکردی! دستور /start رو بزن."
 
 router = Router(name="military")
+
+
+class SetUnitImage(StatesGroup):
+    waiting_for_photo = State()
 
 BUY_QUANTITIES = [1, 10, 50]
 
@@ -330,7 +337,9 @@ async def cb_army_category(callback: CallbackQuery) -> None:
 # لایه‌ی ۳: جزئیات + خرید یک نوع نیرو خاص
 # ---------------------------------------------------------------------------
 
-def unit_detail_keyboard(unit_type_id: int, subcat: str, wounded_quantity: int = 0) -> InlineKeyboardMarkup:
+def unit_detail_keyboard(
+    unit_type_id: int, subcat: str, wounded_quantity: int = 0, is_admin: bool = False
+) -> InlineKeyboardMarkup:
     rows = [
         [
             InlineKeyboardButton(text=f"🛒 خرید {q}", callback_data=f"buy_unit:{unit_type_id}:{q}")
@@ -340,6 +349,10 @@ def unit_detail_keyboard(unit_type_id: int, subcat: str, wounded_quantity: int =
     if wounded_quantity > 0:
         rows.append(
             [InlineKeyboardButton(text=f"🩹 درمان مجروحین ({wounded_quantity})", callback_data=f"heal_unit:{unit_type_id}")]
+        )
+    if is_admin:
+        rows.append(
+            [InlineKeyboardButton(text="🖼️ تنظیم عکس", callback_data=f"setunitimage:{unit_type_id}")]
         )
     rows.append([InlineKeyboardButton(text="🔙 بازگشت به این دسته", callback_data=f"army_cat:{subcat}")])
     return InlineKeyboardMarkup(inline_keyboard=rows)
@@ -376,6 +389,8 @@ def build_unit_detail_text(uu: UserUnit, speed_bonus: float, atk_bonus: float, d
 @router.callback_query(F.data.startswith("unit_menu:"))
 async def cb_unit_menu(callback: CallbackQuery) -> None:
     unit_type_id = int(callback.data.split(":")[1])
+    is_admin = callback.from_user.id in settings.admin_ids
+
     async with get_session() as session:
         user, user_units, orders, user_researches = await _load_state(session, callback.from_user.id)
         if user is None:
@@ -390,17 +405,72 @@ async def cb_unit_menu(callback: CallbackQuery) -> None:
             return
 
         subcat = uu.unit_type.subcategory
+        image_file_id = uu.unit_type.image_file_id
         discount_percent = await get_unit_price_discount_percent(session)
         speed_bonus = await _training_speed_bonus(session, user.id, user_researches)
         text = build_unit_detail_text(
             uu, speed_bonus, _attack_bonus(user_researches), _defense_bonus(user_researches), discount_percent
         )
 
-    try:
-        await callback.message.edit_text(text, reply_markup=unit_detail_keyboard(unit_type_id, subcat, uu.wounded_quantity), parse_mode="HTML")
-    except Exception:
-        await callback.message.answer(text, reply_markup=unit_detail_keyboard(unit_type_id, subcat, uu.wounded_quantity), parse_mode="HTML")
+    keyboard = unit_detail_keyboard(unit_type_id, subcat, uu.wounded_quantity, is_admin)
+
+    if image_file_id:
+        # وقتی عکس داره، همیشه یه پیام جدید (عکس+کپشن) می‌فرستیم - ادیت کردن
+        # یه پیام متنی به عکس تو تلگرام مستقیم ممکن نیست.
+        await callback.message.answer_photo(image_file_id, caption=text, reply_markup=keyboard, parse_mode="HTML")
+    else:
+        try:
+            await callback.message.edit_text(text, reply_markup=keyboard, parse_mode="HTML")
+        except Exception:
+            await callback.message.answer(text, reply_markup=keyboard, parse_mode="HTML")
     await callback.answer()
+
+
+@router.callback_query(F.data.startswith("setunitimage:"))
+async def cb_set_unit_image_start(callback: CallbackQuery, state: FSMContext) -> None:
+    if callback.from_user.id not in settings.admin_ids:
+        await callback.answer("فقط ادمین می‌تونه عکس نیرو رو تنظیم کنه.", show_alert=True)
+        return
+
+    unit_type_id = int(callback.data.split(":")[1])
+    await state.update_data(unit_type_id=unit_type_id)
+    await callback.message.answer("عکس جدید این نیرو رو بفرست:")
+    await state.set_state(SetUnitImage.waiting_for_photo)
+    await callback.answer()
+
+
+@router.message(SetUnitImage.waiting_for_photo, F.photo)
+async def process_set_unit_image(message: Message, state: FSMContext) -> None:
+    if message.from_user.id not in settings.admin_ids:
+        await state.clear()
+        return
+
+    data = await state.get_data()
+    await state.clear()
+    unit_type_id = data.get("unit_type_id")
+
+    async with get_session() as session:
+        unit_type = await session.get(UnitType, unit_type_id)
+        if unit_type is None:
+            await message.answer("این نیرو دیگه پیدا نشد.")
+            return
+        unit_type.image_file_id = message.photo[-1].file_id
+        subcat = unit_type.subcategory
+        await session.commit()
+
+    await message.answer("✅ عکس این نیرو ذخیره شد.")
+
+    async with get_session() as session:
+        user, user_units, orders, user_researches = await _load_state(session, message.from_user.id)
+        if user is not None:
+            text = build_category_text(subcat, user, user_units, orders)
+            keyboard = category_units_keyboard(subcat, user, user_units)
+            await message.answer(text, reply_markup=keyboard, parse_mode="HTML")
+
+
+@router.message(SetUnitImage.waiting_for_photo)
+async def process_set_unit_image_wrong_type(message: Message) -> None:
+    await message.answer("لطفاً یه عکس بفرست (نه متن).")
 
 
 @router.callback_query(F.data.startswith("buy_unit:"))
