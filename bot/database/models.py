@@ -85,6 +85,7 @@ class User(Base):
     # --- جوایز و ماموریت (فاز ۵) ---
     last_daily_chest_claim: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     last_online_gift_claim: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    online_gift_streak: Mapped[int] = mapped_column(Integer, default=0)  # چند روز پشت‌سرهم گرفته
     last_wheel_spin_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
     # --- اتحاد (فاز ۶) ---
