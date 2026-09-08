@@ -79,15 +79,11 @@ class Settings:
     SPY_DETECTED_DEFENSE_DURATION_MINUTES: int = 30
 
     # --- ماموریت و جوایز (فاز ۵) ---
-    DAILY_CHEST_GOLD_MIN: int = 100
-    DAILY_CHEST_GOLD_MAX: int = 400
-    DAILY_CHEST_XP: int = 20
-
     ONLINE_GIFT_COOLDOWN_HOURS: int = 4
     ONLINE_GIFT_GOLD: int = 80
     ONLINE_GIFT_ENERGY: int = 20
-
-    WHEEL_COOLDOWN_HOURS: int = 24
+    ONLINE_GIFT_STREAK_BONUS_GOLD: int = 30  # به‌ازای هر روز پشت‌سرهم، این‌مقدار طلای اضافه به پاداش پایه اضافه میشه
+    ONLINE_GIFT_STREAK_MAX_DAYS: int = 30  # سقف روزهایی که بونوس پشت‌سرهم رو حساب می‌کنه
 
     # --- اتحاد (فاز ۶) ---
     ALLIANCE_MEMBER_LIMIT: int = 20
