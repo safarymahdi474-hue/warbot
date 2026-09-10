@@ -841,16 +841,16 @@ class PendingExpedition(Base):
 
 class ForceJoinChannel(Base):
     """
-    کانال عضویت اجباری که ادمین از داخل ربات (نه فقط .env) اضافه می‌کنه.
-    expires_at=None یعنی دائمیه؛ وگرنه بعد از اون زمان خودش (توسط
-    force_join.py، همون لحظه‌ای که چک میشه) حذف/نادیده گرفته میشه.
+    کانال عضویت اجباری - کاملاً از پنل ادمین مدیریت میشه (بدون هیچ وابستگی
+    به .env). expires_at=None یعنی دائمیه؛ وگرنه بعد از اون زمان خودش (لحظه‌ی
+    بعدی که چک میشه) پاک میشه.
     """
     __tablename__ = "force_join_channels"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     chat_id: Mapped[str] = mapped_column(String(64))
     invite_url: Mapped[str] = mapped_column(String(256))
-    title: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    title: Mapped[str] = mapped_column(String(128))
     added_by_telegram_id: Mapped[int] = mapped_column(BigInteger)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     expires_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
