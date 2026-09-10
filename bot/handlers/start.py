@@ -28,7 +28,7 @@ from bot.utils.force_join import (
     FORCE_JOIN_TEXT,
     build_force_join_keyboard,
     get_unjoined_channels,
-    has_any_force_join_channels,
+    has_active_channels,
 )
 from aiogram.types import CallbackQuery
 
@@ -113,18 +113,14 @@ async def cmd_start(message: Message, state: FSMContext, command: CommandObject)
     referral_code_used = command.args
     await state.update_data(referred_by_code=referral_code_used)
 
-    # اگه عضویت اجباری فعال باشه (از .env یا از پنل ادمین اضافه شده باشه)،
-    # اول باید عضویت رو چک کنیم و قبل از هر چیز نشونش بدیم.
+    # اگه عضویت اجباری از پنل ادمین فعال شده باشه، اول باید عضویت رو چک کنیم.
     async with get_session() as session:
-        force_join_active = await has_any_force_join_channels(session)
-        if force_join_active:
-            unjoined = await get_unjoined_channels(message.bot, session, message.from_user.id)
-        else:
-            unjoined = []
+        force_join_active = await has_active_channels(session)
+        unjoined = await get_unjoined_channels(message.bot, session, message.from_user.id) if force_join_active else []
         await session.commit()
 
     if unjoined:
-        keyboard = await build_force_join_keyboard(message.bot, unjoined)
+        keyboard = build_force_join_keyboard(unjoined)
         await message.answer(FORCE_JOIN_TEXT, reply_markup=keyboard, parse_mode="HTML")
         await state.set_state(Registration.waiting_for_force_join)
         return
@@ -142,7 +138,7 @@ async def cb_check_force_join(callback: CallbackQuery, state: FSMContext) -> Non
     if unjoined:
         await callback.answer("هنوز توی همه‌ی کانال‌ها عضو نشدی! بعد از عضویت دوباره بزن.", show_alert=True)
         try:
-            keyboard = await build_force_join_keyboard(callback.bot, unjoined)
+            keyboard = build_force_join_keyboard(unjoined)
             await callback.message.edit_reply_markup(reply_markup=keyboard)
         except Exception:
             pass
