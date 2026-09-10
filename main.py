@@ -16,6 +16,7 @@ from bot.handlers import (
     battle,
     buildings,
     bugreport,
+    force_join_admin,
     giftcode,
     inventory,
     market,
@@ -131,6 +132,7 @@ async def main() -> None:
     dp.include_router(bugreport.router)
     dp.include_router(giftcode.router)
     dp.include_router(room_settings.router)
+    dp.include_router(force_join_admin.router)
     dp.include_router(admin.router)
 
     await bot.delete_webhook(drop_pending_updates=True)
