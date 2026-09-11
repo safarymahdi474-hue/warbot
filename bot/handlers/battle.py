@@ -157,8 +157,7 @@ async def cb_attack_bot(callback: CallbackQuery) -> None:
     """بعد از انتخاب سختی، حالا باید درصد نیروی اعزامی رو انتخاب کنه."""
     _, difficulty, strategy_key = callback.data.split(":")
     await callback.message.edit_text(
-        "🪖 چند درصد از نیروهات رو اعزام می‌کنی؟\n"
-        "(هرچی نیروی بیشتری بفرستی، ممکنه دیرتر برسه)",
+        "🪖 چند درصد از نیروهات رو اعزام می‌کنی؟",
         reply_markup=expedition_percent_keyboard(f"launch_bot:{difficulty}:{strategy_key}"),
     )
     await callback.answer()
@@ -191,29 +190,16 @@ async def cb_launch_bot_expedition(callback: CallbackQuery) -> None:
 
         attacker.energy -= settings.ATTACK_ENERGY_COST
 
-        travel_minutes = compute_travel_minutes(user_units, sent_units)
-        expedition = PendingExpedition(
-            attacker_id=attacker.id,
-            defender_id=None,
-            is_pvp=False,
-            difficulty=difficulty,
-            strategy_key=strategy_key,
-            sent_units={str(k): v for k, v in sent_units.items()},
-            room_id=current_room(),
-            chat_id=callback.message.chat.id,
-            attacker_telegram_id=callback.from_user.id,
-            arrival_at=datetime.utcnow() + timedelta(minutes=travel_minutes),
-        )
-        session.add(expedition)
+        report = await resolve_bot_battle(session, attacker, difficulty, strategy_key, sent_units)
+        leveled_up = getattr(report, "_leveled_up", [])
+        await record_progress(session, attacker, "bot_battle", 1)
+        if report.winner == "attacker":
+            await record_progress(session, attacker, "battle_win", 1)
         await session.commit()
-        expedition_id = expedition.id
 
-    asyncio.create_task(_schedule_expedition_resolve(callback.bot, expedition_id, travel_minutes * 60))
+        text = build_bot_report_text(report, leveled_up, attacker.hp, attacker.max_hp)
 
-    await callback.message.edit_text(
-        f"🛫 نیروهات اعزام شدن!\n⏳ تا حدود {travel_minutes} دقیقه‌ی دیگه نتیجه‌ی نبرد اعلام میشه.",
-        reply_markup=attack_menu_keyboard(),
-    )
+    await callback.message.edit_text(text, reply_markup=bot_difficulty_keyboard(strategy_key), parse_mode="HTML")
     await callback.answer()
 
 
@@ -406,8 +392,7 @@ async def cb_attack_pvp(callback: CallbackQuery) -> None:
             return
 
     await callback.message.edit_text(
-        "🪖 چند درصد از نیروهات رو اعزام می‌کنی؟\n"
-        "(هرچی نیروی بیشتری بفرستی، ممکنه دیرتر برسه)",
+        "🪖 چند درصد از نیروهات رو اعزام می‌کنی؟",
         reply_markup=expedition_percent_keyboard(f"launch_pvp:{defender_id_str}:{strategy_key}"),
     )
     await callback.answer()
@@ -438,6 +423,12 @@ async def cb_launch_pvp_expedition(callback: CallbackQuery) -> None:
             await callback.answer("این بازیکن دیگه در دسترس نیست.", show_alert=True)
             return
 
+        from bot.utils.league import can_fight
+
+        if not can_fight(attacker, defender):
+            await callback.answer("این بازیکن دیگه هم‌لیگ تو نیست (لیگش عوض شده).", show_alert=True)
+            return
+
         user_units = await _load_units_for_expedition(session, attacker.id)
         sent_units = compute_sent_units(user_units, attacker.level, percent)
         if not sent_units:
@@ -446,27 +437,51 @@ async def cb_launch_pvp_expedition(callback: CallbackQuery) -> None:
 
         attacker.energy -= settings.ATTACK_ENERGY_COST
 
-        travel_minutes = compute_travel_minutes(user_units, sent_units)
-        expedition = PendingExpedition(
-            attacker_id=attacker.id,
-            defender_id=defender.id,
-            is_pvp=True,
-            strategy_key=strategy_key,
-            sent_units={str(k): v for k, v in sent_units.items()},
-            room_id=current_room(),
-            chat_id=callback.message.chat.id,
-            attacker_telegram_id=callback.from_user.id,
-            arrival_at=datetime.utcnow() + timedelta(minutes=travel_minutes),
-        )
-        session.add(expedition)
+        report = await resolve_pvp_battle(session, attacker, defender, strategy_key, sent_units)
+        leveled_up = getattr(report, "_leveled_up", [])
+        defender_nickname = defender.nickname
+        await record_progress(session, attacker, "pvp_battle", 1)
+        if report.winner == "attacker":
+            await record_progress(session, attacker, "battle_win", 1)
+            await record_pvp_win(session, attacker)
+
+        war_note = ""
+        if attacker.alliance_id and defender.alliance_id and attacker.alliance_id != defender.alliance_id:
+            war = await get_active_war_between(session, attacker.alliance_id, defender.alliance_id)
+            if war is not None:
+                winner_alliance_id = attacker.alliance_id if report.winner == "attacker" else defender.alliance_id
+                await add_war_score(session, war, winner_alliance_id, report.attacker_power)
+                war_note = "\n\n⚔️ این نبرد به امتیاز جنگ اتحادتون اضافه شد!"
+
         await session.commit()
-        expedition_id = expedition.id
 
-    asyncio.create_task(_schedule_expedition_resolve(callback.bot, expedition_id, travel_minutes * 60))
+        text = build_pvp_report_text(
+            report, defender_nickname, leveled_up, attacker.hp, attacker.max_hp, defender.hp, defender.max_hp
+        ) + war_note
 
+        defender_notify = defender.notifications_enabled
+        defender_telegram_id = defender.telegram_id
+        attacker_nickname = attacker.nickname
+        defender_won = report.winner == "defender"
+
+    if defender_notify:
+        outcome_msg = (
+            f"⚔️ <b>{attacker_nickname}</b> بهت حمله کرد ولی دفعش کردی! 🛡️"
+            if defender_won
+            else f"⚔️ <b>{attacker_nickname}</b> بهت حمله کرد و شکستت داد و غارتت کرد! 😡"
+        )
+        try:
+            await callback.bot.send_message(
+                defender_telegram_id, f"{outcome_msg}\nبرای جزئیات: /reports", parse_mode="HTML"
+            )
+        except Exception:
+            pass
+
+    show_revenge = report.winner == "defender"
     await callback.message.edit_text(
-        f"🛫 نیروهات اعزام شدن!\n⏳ تا حدود {travel_minutes} دقیقه‌ی دیگه نتیجه‌ی نبرد اعلام میشه.",
-        reply_markup=attack_menu_keyboard(),
+        text,
+        reply_markup=post_pvp_battle_keyboard(defender_id, strategy_key, show_revenge),
+        parse_mode="HTML",
     )
     await callback.answer()
 
