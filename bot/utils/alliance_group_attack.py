@@ -58,6 +58,7 @@ async def find_group_attack_targets(session: AsyncSession, alliance_id: int, exc
             room_condition(User.room_id),
             (User.alliance_id.is_(None)) | (User.alliance_id != alliance_id),
             User.telegram_id.not_in(banned_subquery),
+            User.admin_mode_enabled == False,  # noqa: E712 - کسی که ادمین‌مود روشنه قابل حمله نیست
         )
         .order_by(User.level.desc())
         .limit(settings.ALLIANCE_GROUP_ATTACK_MAX_TARGETS_SHOWN)
@@ -77,6 +78,8 @@ async def create_group_attack(
         return "نمی‌تونی به هم‌اتحادی‌ت حمله کنی."
     if target.room_id != current_room():
         return "این بازیکن مال این گروه/چت نیست."
+    if target.admin_mode_enabled:
+        return "این بازیکن قابل حمله نیست."
 
     existing = await get_active_group_attack(session, leader.alliance_id)
     if existing is not None:
