@@ -33,6 +33,8 @@ def training_duration(unit_type: UnitType, quantity: int, training_speed_percent
 
 
 def can_afford(user: User, cost: dict[str, int]) -> bool:
+    if user.admin_mode_enabled:
+        return True
     return (
         user.gold >= cost["gold"]
         and user.iron >= cost["iron"]
@@ -62,17 +64,18 @@ def start_training(
     """خروجی: در صورت موفقیت یک TrainingOrder (که باید session.add بشه)، وگرنه پیام خطا (str)."""
     if quantity <= 0:
         return "تعداد نامعتبره."
-    if user.level < unit_type.min_player_level:
+    if user.level < unit_type.min_player_level and not user.admin_mode_enabled:
         return f"برای خرید {unit_type.name_fa} باید حداقل سطح {unit_type.min_player_level} باشی."
 
     cost = training_cost(unit_type, quantity, discount_percent)
     if not can_afford(user, cost):
         return "منابع کافی نداری. هزینه لازم: " + " + ".join(_format_cost_parts(cost))
 
-    user.gold -= cost["gold"]
-    user.iron -= cost["iron"]
-    user.oil -= cost["oil"]
-    user.uranium -= cost["uranium"]
+    if not user.admin_mode_enabled:
+        user.gold -= cost["gold"]
+        user.iron -= cost["iron"]
+        user.oil -= cost["oil"]
+        user.uranium -= cost["uranium"]
 
     duration = training_duration(unit_type, quantity, training_speed_percent)
     return TrainingOrder(
@@ -136,7 +139,10 @@ def start_research(user: User, user_research: UserResearch, research_type: Resea
         return "این تحقیق به حداکثر سطح رسیده."
 
     cost = research_cost(research_type, user_research.level)
-    if not (user.gold >= cost["gold"] and user.iron >= cost["iron"] and user.oil >= cost["oil"]):
+    if not (
+        user.admin_mode_enabled
+        or (user.gold >= cost["gold"] and user.iron >= cost["iron"] and user.oil >= cost["oil"])
+    ):
         parts = [f"💰{cost['gold']} طلا"]
         if cost["iron"]:
             parts.append(f"⛏️{cost['iron']} آهن")
@@ -144,9 +150,10 @@ def start_research(user: User, user_research: UserResearch, research_type: Resea
             parts.append(f"🛢️{cost['oil']} نفت")
         return "منابع کافی نداری. هزینه لازم: " + " + ".join(parts)
 
-    user.gold -= cost["gold"]
-    user.iron -= cost["iron"]
-    user.oil -= cost["oil"]
+    if not user.admin_mode_enabled:
+        user.gold -= cost["gold"]
+        user.iron -= cost["iron"]
+        user.oil -= cost["oil"]
     user_research.upgrade_finish_at = datetime.utcnow() + research_duration(
         research_type, user_research.level
     )
