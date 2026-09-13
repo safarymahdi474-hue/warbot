@@ -245,6 +245,7 @@ async def _find_pvp_targets(session, attacker: User) -> list[User]:
             room_condition(User.room_id),
             User.level.between(low, high),
             User.telegram_id.not_in(banned_subquery),
+            User.admin_mode_enabled == False,  # noqa: E712 - کسی که ادمین‌مود روشنه قابل حمله نیست
         )
         .order_by(func.random())
         .limit(settings.PVP_TARGETS_SHOWN * 5)
@@ -384,6 +385,9 @@ async def cb_attack_pvp(callback: CallbackQuery) -> None:
         if defender.room_id != current_room():
             await callback.answer("این بازیکن مال این گروه/چت نیست.", show_alert=True)
             return
+        if defender.admin_mode_enabled:
+            await callback.answer("این بازیکن قابل حمله نیست.", show_alert=True)
+            return
 
         from bot.utils.league import can_fight
 
@@ -421,6 +425,9 @@ async def cb_launch_pvp_expedition(callback: CallbackQuery) -> None:
         defender = await session.get(User, defender_id)
         if defender is None or defender.room_id != current_room():
             await callback.answer("این بازیکن دیگه در دسترس نیست.", show_alert=True)
+            return
+        if defender.admin_mode_enabled:
+            await callback.answer("این بازیکن قابل حمله نیست.", show_alert=True)
             return
 
         from bot.utils.league import can_fight
