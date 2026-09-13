@@ -72,6 +72,7 @@ def admin_panel_text(wars_enabled: bool) -> str:
         "/pendingpurchases — درخواست‌های خرید کارت‌به‌کارت در انتظار تایید\n"
         "/shopadmin — مدیریت کامل فروشگاه (قیمت/آیتم/شماره کارت)\n"
         "/forcejoinadmin — مدیریت کامل عضویت اجباری (پنل با دکمه)\n"
+        "/adminmode — روشن/خاموش کردن حالت ادمین (منابع نامحدود، مصون از حمله)\n"
         "/referrals — رتبه‌بندی بیشترین رفرال‌گیرها\n"
         "/creategift طلا تعداد_استفاده [کد_دلخواه] — ساخت کد هدیه\n"
         "/giftcodes — لیست کدهای هدیه اخیر\n"
@@ -577,3 +578,40 @@ async def cmd_set_unit_discount(message: Message, command: CommandObject) -> Non
     )
 
 
+@router.message(Command("adminmode"))
+async def cmd_admin_mode(message: Message) -> None:
+    """
+    حالت ادمین رو برای پروفایل فعلی (همین چت/گروه) روشن/خاموش می‌کنه:
+    - نیازی به رسیدن به سطح لازم برای نیرو نیست (همه‌چیز باز میشه).
+    - منابع (طلا/آهن/نفت/اورانیوم) نامحدود میشه (هزینه‌ها کسر نمیشن).
+    - هیچ‌کس (نه PvP معمولی، نه حمله‌ی گروهی اتحاد) نمی‌تونه بهش حمله کنه.
+    """
+    _, is_admin = await _require_admin(message.from_user.id)
+    if not is_admin:
+        return
+
+    async with get_session() as session:
+        result = await session.execute(select(User).where(*user_scope(message.from_user.id)))
+        user = result.scalar_one_or_none()
+        if user is None:
+            await message.answer("هنوز ثبت‌نام نکردی! اول /start رو بزن.")
+            return
+
+        user.admin_mode_enabled = not user.admin_mode_enabled
+        new_state = user.admin_mode_enabled
+        await log_action(
+            session, "toggle_admin_mode", message.from_user.id, None, "روشن" if new_state else "خاموش"
+        )
+        await session.commit()
+
+    if new_state:
+        await message.answer(
+            "🛠️ <b>حالت ادمین روشن شد.</b>\n\n"
+            "✅ همه‌ی نیروها بدون نیاز به سطح در دسترسن\n"
+            "✅ منابعت نامحدوده (هزینه‌ها کسر نمیشن)\n"
+            "✅ هیچ‌کس نمی‌تونه بهت حمله کنه\n\n"
+            "برای خاموش کردن، دوباره /adminmode رو بزن.",
+            parse_mode="HTML",
+        )
+    else:
+        await message.answer("🛠️ حالت ادمین خاموش شد. بازی برات مثل یه بازیکن عادی شد.")
