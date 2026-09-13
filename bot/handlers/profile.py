@@ -25,7 +25,10 @@ def make_bar(current: int, maximum: int, length: int = 10) -> str:
 def profile_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[
-            [InlineKeyboardButton(text="🔗 رفرال‌های من", callback_data="show_referrals")],
+            [
+                InlineKeyboardButton(text="🔗 رفرال‌های من", callback_data="show_referrals"),
+                InlineKeyboardButton(text="🏛️ اتحاد", callback_data="show_alliance_menu"),
+            ],
             [InlineKeyboardButton(text="🔙 منوی اصلی", callback_data="show_main_menu")],
         ]
     )
@@ -43,7 +46,8 @@ def build_profile_text(user: User) -> str:
     return (
         room_line +
         f"👤 <b>{user.nickname}</b>\n"
-        f"🏳️ لقب/کشور: {title_text}\n"
+        + ("🛠️ <b>حالت ادمین: فعال</b>\n" if user.admin_mode_enabled else "")
+        + f"🏳️ لقب/کشور: {title_text}\n"
         f"{league['icon']} لیگ: {league['name_fa']} (🏆 {user.league_cup} کاپ)\n"
         f"🗺️ خاک: {user.territory_count}\n"
         f"⭐ سطح: {user.level}\n\n"
