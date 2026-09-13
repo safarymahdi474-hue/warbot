@@ -179,7 +179,7 @@ def army_categories_keyboard(user: User, user_units: list[UserUnit]) -> InlineKe
     unlocked_by_subcat: dict[str, bool] = {}
     for uu in user_units:
         ut = uu.unit_type
-        if user.level >= ut.min_player_level:
+        if user.level >= ut.min_player_level or user.admin_mode_enabled:
             unlocked_by_subcat[ut.subcategory] = True
         else:
             unlocked_by_subcat.setdefault(ut.subcategory, False)
@@ -274,7 +274,7 @@ def build_category_text(subcat: str, user: User, user_units: list[UserUnit], ord
 
     for uu in rows:
         ut = uu.unit_type
-        if user.level < ut.min_player_level:
+        if user.level < ut.min_player_level and not user.admin_mode_enabled:
             lines.append(f"🔒 {ut.icon} {ut.name_fa} — نیاز به سطح {ut.min_player_level}")
             continue
         pending = pending_by_type.get(ut.id, 0)
@@ -288,7 +288,8 @@ def category_units_keyboard(subcat: str, user: User, user_units: list[UserUnit])
     rows = []
     unlocked = [
         uu for uu in user_units
-        if uu.unit_type.subcategory == subcat and user.level >= uu.unit_type.min_player_level
+        if uu.unit_type.subcategory == subcat
+        and (user.level >= uu.unit_type.min_player_level or user.admin_mode_enabled)
     ]
     unlocked.sort(key=lambda uu: uu.unit_type.tier)
 
@@ -400,7 +401,7 @@ async def cb_unit_menu(callback: CallbackQuery) -> None:
         if uu is None:
             await callback.answer("این نیرو پیدا نشد.", show_alert=True)
             return
-        if user.level < uu.unit_type.min_player_level:
+        if user.level < uu.unit_type.min_player_level and not user.admin_mode_enabled:
             await callback.answer(f"این نیرو نیاز به سطح {uu.unit_type.min_player_level} داره.", show_alert=True)
             return
 
