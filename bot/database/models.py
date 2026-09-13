@@ -106,6 +106,10 @@ class User(Base):
     # --- تنظیمات (فاز ۱۰) ---
     notifications_enabled: Mapped[bool] = mapped_column(Boolean, default=True)
 
+    # --- حالت ادمین (فقط برای ادمین‌های واقعی، از /adminmode روشن/خاموش میشه) ---
+    # وقتی روشنه: نیاز به سطح برای نیرو نداره، منابع نامحدوده، و کسی نمی‌تونه بهش حمله کنه.
+    admin_mode_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
+
     # --- تصرف خاک ---
     territory_count: Mapped[int] = mapped_column(Integer, default=3)
 
