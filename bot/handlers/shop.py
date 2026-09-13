@@ -255,9 +255,38 @@ async def cb_reject_purchase(callback: CallbackQuery, state: FSMContext) -> None
         review_message_id=callback.message.message_id,
         review_caption=callback.message.caption or "",
     )
-    await callback.message.answer("دلیل رد این خرید رو بنویس (یا برای رد بدون دلیل «-» بفرست):")
+    cancel_keyboard = InlineKeyboardMarkup(
+        inline_keyboard=[[InlineKeyboardButton(text="🔙 انصراف", callback_data=f"cancel_reject_purchase:{request_id}")]]
+    )
+    await callback.message.answer(
+        "دلیل رد این خرید رو بنویس (یا برای رد بدون دلیل «-» بفرست):", reply_markup=cancel_keyboard
+    )
     await state.set_state(RejectPurchase.waiting_for_reason)
     await callback.answer()
+
+
+@router.callback_query(F.data.startswith("cancel_reject_purchase:"))
+async def cb_cancel_reject_purchase(callback: CallbackQuery, state: FSMContext) -> None:
+    if callback.from_user.id not in settings.admin_ids:
+        await callback.answer("فقط ادمین می‌تونه این کارو بکنه.", show_alert=True)
+        return
+
+    request_id = int(callback.data.split(":")[1])
+    await state.clear()
+
+    keyboard = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(text="✅ تایید", callback_data=f"approve_purchase:{request_id}"),
+                InlineKeyboardButton(text="❌ رد", callback_data=f"reject_purchase:{request_id}"),
+            ]
+        ]
+    )
+    try:
+        await callback.message.delete()
+    except Exception:
+        pass
+    await callback.answer("لغو شد.", show_alert=True)
 
 
 @router.message(RejectPurchase.waiting_for_reason)
