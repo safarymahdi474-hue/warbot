@@ -26,6 +26,8 @@ def upgrade_duration(building_type: BuildingType, current_level: int, time_reduc
 
 
 def can_afford(user: User, cost: dict[str, int]) -> bool:
+    if user.admin_mode_enabled:
+        return True
     if user.gold < cost["gold"]:
         return False
     if cost["iron"] > 0 and user.iron < cost["iron"]:
@@ -51,8 +53,8 @@ def start_upgrade(
             f" + ⛏️{cost['iron']} آهن" if cost["iron"] else ""
         )
 
-    user.gold -= cost["gold"]
-    user.iron -= cost["iron"]
+    user.gold -= cost["gold"] if not user.admin_mode_enabled else 0
+    user.iron -= cost["iron"] if not user.admin_mode_enabled else 0
     user_building.upgrade_finish_at = datetime.utcnow() + upgrade_duration(
         building_type, user_building.level, time_reduction_percent
     )
