@@ -359,7 +359,9 @@ def unit_detail_keyboard(
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
-def build_unit_detail_text(uu: UserUnit, speed_bonus: float, atk_bonus: float, def_bonus: float, discount_percent: float = 0.0) -> str:
+def build_unit_detail_text(
+    uu: UserUnit, user: User, speed_bonus: float, atk_bonus: float, def_bonus: float, discount_percent: float = 0.0
+) -> str:
     ut = uu.unit_type
     atk = effective_attack(ut, atk_bonus)
     dfn = effective_defense(ut, def_bonus)
@@ -374,15 +376,35 @@ def build_unit_detail_text(uu: UserUnit, speed_bonus: float, atk_bonus: float, d
         + (f" + {ut.cost_iron} آهن" if ut.cost_iron else "")
         + (f" + {ut.cost_oil} نفت" if ut.cost_oil else "")
         + (f" + {ut.cost_uranium} اورانیوم" if ut.cost_uranium else ""),
+        f"\n📦 موجودی فعلی تو: 💰{user.gold} ⛏️{user.iron} 🛢️{user.oil} ☢️{user.uranium}",
     ]
     if discount_percent:
         lines.append(f"🏷️ تخفیف فعلی ادمین: {discount_percent:.0f}٪")
 
+    lines.append("")
     for q in BUY_QUANTITIES:
         cost = training_cost(ut, q, discount_percent)
         duration = training_duration(ut, q, speed_bonus)
         minutes = max(1, int(duration.total_seconds() // 60))
-        lines.append(f"  خرید {q} عدد → {minutes} دقیقه زمان آموزش")
+
+        shortfall_parts = []
+        resource_map = [
+            ("gold", "💰", user.gold),
+            ("iron", "⛏️", user.iron),
+            ("oil", "🛢️", user.oil),
+            ("uranium", "☢️", user.uranium),
+        ]
+        for key, icon, have in resource_map:
+            needed = cost[key]
+            if needed <= 0:
+                continue
+            if have >= needed:
+                shortfall_parts.append(f"{icon}کافیه")
+            else:
+                shortfall_parts.append(f"{icon}{needed - have} کم داری")
+
+        status = " | ".join(shortfall_parts) if shortfall_parts else ""
+        lines.append(f"  خرید {q} عدد → {minutes} دقیقه زمان آموزش" + (f"\n    {status}" if status else ""))
 
     return "\n".join(lines)
 
@@ -410,7 +432,7 @@ async def cb_unit_menu(callback: CallbackQuery) -> None:
         discount_percent = await get_unit_price_discount_percent(session)
         speed_bonus = await _training_speed_bonus(session, user.id, user_researches)
         text = build_unit_detail_text(
-            uu, speed_bonus, _attack_bonus(user_researches), _defense_bonus(user_researches), discount_percent
+            uu, user, speed_bonus, _attack_bonus(user_researches), _defense_bonus(user_researches), discount_percent
         )
 
     keyboard = unit_detail_keyboard(unit_type_id, subcat, uu.wounded_quantity, is_admin)
